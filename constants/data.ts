@@ -11,27 +11,48 @@ export interface ShoppingItem {
 }
 
 export const CATEGORIES = [
-    'Tech & Workstation',
-    'Room & Interior',
-    'Wardrobe & Fashion',
-    'Social Obligations',
-    'School & Household',
+    'Groceries',
+    'Clothing',
+    'Electronics',
+    'Home & Furniture',
+    'Appliances',
+    'Health & Beauty',
+    'Transportation',
+    'Education',
+    'Work & Business',
+    'Entertainment',
+    'Gifts',
+    'Other',
 ] as const;
 
 export const CATEGORY_COLORS: Record<string, string> = {
-    'Tech & Workstation': '#007AFF',
-    'Room & Interior': '#34C759',
-    'Wardrobe & Fashion': '#FF2D55',
-    'Social Obligations': '#FF9500',
-    'School & Household': '#AF52DE',
+    'Groceries': '#34C759',
+    'Clothing': '#FF2D55',
+    'Electronics': '#007AFF',
+    'Home & Furniture': '#8E8E93',
+    'Appliances': '#00B4D8',
+    'Health & Beauty': '#FF9500',
+    'Transportation': '#5856D6',
+    'Education': '#AF52DE',
+    'Work & Business': '#6A1B9A',
+    'Entertainment': '#FFD60A',
+    'Gifts': '#FF3B30',
+    'Other': '#A0A0A0',
 };
 
 export const CATEGORY_EMOJIS: Record<string, string> = {
-    'Tech & Workstation': '💻',
-    'Room & Interior': '🛋️',
-    'Wardrobe & Fashion': '👗',
-    'Social Obligations': '🎁',
-    'School & Household': '📚',
+    'Groceries': '🛒',
+    'Clothing': '👕',
+    'Electronics': '📱',
+    'Home & Furniture': '🏠',
+    'Appliances': '🧊',
+    'Health & Beauty': '💄',
+    'Transportation': '🚗',
+    'Education': '📚',
+    'Work & Business': '💼',
+    'Entertainment': '🎮',
+    'Gifts': '🎁',
+    'Other': '📦',
 };
 
 // Palette cycled through when user creates a custom category
@@ -41,9 +62,49 @@ export const NEW_CATEGORY_PALETTE = [
 ];
 
 export const DEMO_ITEMS: ShoppingItem[] = [
-    { id: '1', name: 'Mechanical Keyboard', price: 89.99, quantity: 1, category: 'Tech & Workstation', bought: false, createdAt: Date.now() - 4000 },
-    { id: '2', name: 'Desk Lamp', price: 34.00, quantity: 1, category: 'Room & Interior', bought: true, createdAt: Date.now() - 3000 },
-    { id: '3', name: 'White Sneakers', price: 59.95, quantity: 1, category: 'Wardrobe & Fashion', bought: false, createdAt: Date.now() - 2000 },
-    { id: '4', name: 'Birthday Gift — Sara', price: 25.00, quantity: 1, category: 'Social Obligations', bought: false, createdAt: Date.now() - 1000 },
-    { id: '5', name: 'Notebook Set', price: 12.50, quantity: 2, category: 'School & Household', bought: true, createdAt: Date.now() - 500 },
+    {
+        id: '1',
+        name: 'Milk & Bread',
+        price: 8.50,
+        quantity: 1,
+        category: 'Groceries',
+        bought: false,
+        createdAt: Date.now() - 6000,
+    },
+    {
+        id: '2',
+        name: 'Air Fryer',
+        price: 120.00,
+        quantity: 1,
+        category: 'Appliances',
+        bought: false,
+        createdAt: Date.now() - 5000,
+    },
+    {
+        id: '3',
+        name: 'Running Shoes',
+        price: 75.00,
+        quantity: 1,
+        category: 'Clothing',
+        bought: true,
+        createdAt: Date.now() - 4000,
+    },
+    {
+        id: '4',
+        name: 'Bluetooth Headphones',
+        price: 59.99,
+        quantity: 1,
+        category: 'Electronics',
+        bought: false,
+        createdAt: Date.now() - 3000,
+    },
+    {
+        id: '5',
+        name: 'Birthday Gift — Alex',
+        price: 40.00,
+        quantity: 1,
+        category: 'Gifts',
+        bought: false,
+        createdAt: Date.now() - 2000,
+    },
 ];

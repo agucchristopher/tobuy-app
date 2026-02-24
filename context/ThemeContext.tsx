@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import Storage from '@/lib/storage';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useColorScheme } from 'react-native';
 
 // ─── Font families ────────────────────────────────────────────────────────────
@@ -112,6 +113,33 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const setCurrency = (code: CurrencyCode) => setCurrencyCode(code);
 
     const currency = CURRENCIES.find(c => c.code === currencyCode) ?? CURRENCIES[0];
+
+    // Load settings on mount
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const [savedMode, savedCurr] = await Promise.all([
+                    Storage.getItem('tobuy_theme'),
+                    Storage.getItem('tobuy_currency'),
+                ]);
+                if (savedMode) setMode(savedMode as ThemeMode);
+                if (savedCurr) setCurrencyCode(savedCurr as CurrencyCode);
+            } catch (e) {
+                console.error('Theme load fail', e);
+            }
+        };
+        loadSettings();
+    }, []);
+
+    // Save mode
+    useEffect(() => {
+        Storage.setItem('tobuy_theme', mode).catch(e => console.error('Theme save fail', e));
+    }, [mode]);
+
+    // Save currency
+    useEffect(() => {
+        Storage.setItem('tobuy_currency', currencyCode).catch(e => console.error('Currency save fail', e));
+    }, [currencyCode]);
 
     // ── Shared helper: insert commas every 3 digits in the integer part ───────
     const withCommas = (fixed: string): string => {

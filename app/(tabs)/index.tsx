@@ -1,5 +1,6 @@
+import Storage from '@/lib/storage';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -61,9 +62,48 @@ export default function ShoppingListScreen() {
   const isDark = T.mode === 'dark';
 
   // ── List state ────────────────────────────────────────────────────────────
-  const [items, setItems] = useState<ShoppingItem[]>(DEMO_ITEMS);
+  const [items, setItems] = useState<ShoppingItem[]>([]);
   const [cats, setCats] = useState<CategoryEntry[]>(DEFAULT_CATS);
   const [filter, setFilter] = useState('All');
+  const [loading, setLoading] = useState(true);
+
+  // ── Persistence ───────────────────────────────────────────────────────────
+  // Load data on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [savedItems, savedCats] = await Promise.all([
+          Storage.getItem('tobuy_items'),
+          Storage.getItem('tobuy_categories'),
+        ]);
+
+        if (savedItems) setItems(JSON.parse(savedItems));
+        else setItems(DEMO_ITEMS); // Fallback to demo items if empty
+
+        if (savedCats) setCats(JSON.parse(savedCats));
+      } catch (e) {
+        console.error('Failed to load data', e);
+        setItems(DEMO_ITEMS);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  // Save items when they change
+  useEffect(() => {
+    if (!loading) {
+      Storage.setItem('tobuy_items', JSON.stringify(items)).catch(e => console.error('Save items fail', e));
+    }
+  }, [items, loading]);
+
+  // Save categories when they change
+  useEffect(() => {
+    if (!loading) {
+      Storage.setItem('tobuy_categories', JSON.stringify(cats)).catch(e => console.error('Save cats fail', e));
+    }
+  }, [cats, loading]);
 
   // ── Modal state ───────────────────────────────────────────────────────────
   const [modalMounted, setModalMounted] = useState(false);
@@ -326,21 +366,27 @@ export default function ShoppingListScreen() {
       </ScrollView>
 
       {/* List */}
-      <FlatList
-        data={filtered}
-        keyExtractor={i => i.id}
-        renderItem={renderItem}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={s.listContent}
-        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-        ListEmptyComponent={
-          <View style={s.empty}>
-            <Text style={s.emptyEmoji}>🛍️</Text>
-            <Text style={s.emptyTitle}>Nothing here</Text>
-            <Text style={s.emptySub}>Tap + to add your first item</Text>
-          </View>
-        }
-      />
+      {loading ? (
+        <View style={s.empty}>
+          <Text style={s.emptySub}>Loading your list...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={i => i.id}
+          renderItem={renderItem}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={s.listContent}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+          ListEmptyComponent={
+            <View style={s.empty}>
+              <Text style={s.emptyEmoji}>🛍️</Text>
+              <Text style={s.emptyTitle}>Nothing here</Text>
+              <Text style={s.emptySub}>Tap + to add your first item</Text>
+            </View>
+          }
+        />
+      )}
 
       {/* FAB */}
       <TouchableOpacity style={[s.fab, { backgroundColor: T.accent }]} onPress={openAdd}>
