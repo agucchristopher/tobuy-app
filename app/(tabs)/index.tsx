@@ -28,7 +28,6 @@ import { useTheme } from '@/context/ThemeContext';
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface CategoryEntry { name: string; color: string; emoji: string }
 
-// ─── Build initial category list from constants ────────────────────────────────
 const DEFAULT_CATS: CategoryEntry[] = (CATEGORIES as readonly string[]).map(name => ({
   name,
   color: CATEGORY_COLORS[name] ?? '#8E8E93',
@@ -41,15 +40,12 @@ export default function ShoppingListScreen() {
   const T = useTheme();
   const s = makeStyles(T);
 
-  // ── State ──────────────────────────────────────────────────────────────────
   const [items, setItems] = useState<ShoppingItem[]>(DEMO_ITEMS);
   const [cats, setCats] = useState<CategoryEntry[]>(DEFAULT_CATS);
   const [modalVisible, setModalVisible] = useState(false);
   const [filter, setFilter] = useState('All');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', price: '', quantity: '1', category: DEFAULT_CATS[0].name });
-
-  // Add-category inline state
   const [showCatInput, setShowCatInput] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const catInputRef = useRef<TextInput>(null);
@@ -62,33 +58,26 @@ export default function ShoppingListScreen() {
   const boughtCnt = items.filter(i => i.bought).length;
   const fmt = T.formatPrice;
 
-  const catNames = cats.map(c => c.name);
-  const allFilters = [...BASE_FILTERS, ...catNames];
-
+  const allFilters = [...BASE_FILTERS, ...cats.map(c => c.name)];
   const filtered =
     filter === 'All' ? items :
       filter === 'Pending' ? items.filter(i => !i.bought) :
         filter === 'Bought' ? items.filter(i => i.bought) :
           items.filter(i => i.category === filter);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  const catColor = (name: string) => cats.find(c => c.name === name)?.color ?? '#8E8E93';
-  const catEmoji = (name: string) => cats.find(c => c.name === name)?.emoji ?? '📦';
+  const catColor = (n: string) => cats.find(c => c.name === n)?.color ?? '#8E8E93';
+  const catEmoji = (n: string) => cats.find(c => c.name === n)?.emoji ?? '📦';
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const openAdd = () => {
     setForm({ name: '', price: '', quantity: '1', category: cats[0]?.name ?? '' });
-    setEditingId(null);
-    setShowCatInput(false);
-    setNewCatName('');
+    setEditingId(null); setShowCatInput(false); setNewCatName('');
     setModalVisible(true);
   };
 
   const openEdit = (item: ShoppingItem) => {
     setForm({ name: item.name, price: String(item.price), quantity: String(item.quantity), category: item.category });
-    setEditingId(item.id);
-    setShowCatInput(false);
-    setNewCatName('');
+    setEditingId(item.id); setShowCatInput(false); setNewCatName('');
     setModalVisible(true);
   };
 
@@ -97,9 +86,14 @@ export default function ShoppingListScreen() {
     const qty = Math.max(1, parseInt(form.quantity) || 1);
     if (!form.name.trim() || isNaN(price) || price <= 0) return;
     if (editingId) {
-      setItems(p => p.map(i => i.id === editingId ? { ...i, name: form.name.trim(), price, quantity: qty, category: form.category } : i));
+      setItems(p => p.map(i => i.id === editingId
+        ? { ...i, name: form.name.trim(), price, quantity: qty, category: form.category }
+        : i));
     } else {
-      setItems(p => [{ id: Date.now().toString(), name: form.name.trim(), price, quantity: qty, category: form.category, bought: false, createdAt: Date.now() }, ...p]);
+      setItems(p => [{
+        id: Date.now().toString(), name: form.name.trim(), price,
+        quantity: qty, category: form.category, bought: false, createdAt: Date.now(),
+      }, ...p]);
     }
     setModalVisible(false);
   };
@@ -107,17 +101,12 @@ export default function ShoppingListScreen() {
   const confirmAddCategory = () => {
     const trimmed = newCatName.trim();
     if (!trimmed || cats.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
-      setShowCatInput(false);
-      setNewCatName('');
-      return;
+      setShowCatInput(false); setNewCatName(''); return;
     }
-    // Pick a color from the palette, cycling by index
     const color = NEW_CATEGORY_PALETTE[cats.length % NEW_CATEGORY_PALETTE.length];
-    const entry: CategoryEntry = { name: trimmed, color, emoji: '🏷️' };
-    setCats(p => [...p, entry]);
+    setCats(p => [...p, { name: trimmed, color, emoji: '🏷️' }]);
     setForm(f => ({ ...f, category: trimmed }));
-    setShowCatInput(false);
-    setNewCatName('');
+    setShowCatInput(false); setNewCatName('');
   };
 
   const toggleBought = (id: string) => setItems(p => p.map(i => i.id === id ? { ...i, bought: !i.bought } : i));
@@ -133,46 +122,50 @@ export default function ShoppingListScreen() {
 
     return (
       <TouchableOpacity
-        style={s.row}
+        style={[s.card, item.bought && { opacity: 0.55 }]}
         onPress={() => toggleBought(item.id)}
         onLongPress={() => openEdit(item)}
-        activeOpacity={0.6}
+        activeOpacity={0.7}
       >
+        {/* Category stripe */}
+        <View style={[s.stripe, { backgroundColor: item.bought ? T.green : cc }]} />
+
         {/* Checkbox */}
         <TouchableOpacity
           style={[s.cb, item.bought && { backgroundColor: T.green, borderColor: T.green }]}
           onPress={() => toggleBought(item.id)}
+          hitSlop={8}
         >
-          {item.bought && <Ionicons name="checkmark" size={12} color="#fff" />}
+          {item.bought && <Ionicons name="checkmark" size={13} color="#fff" />}
         </TouchableOpacity>
 
-        {/* Info */}
-        <View style={s.rowBody}>
-          <Text style={[s.rowName, item.bought && s.rowNameDone]} numberOfLines={1}>
+        {/* Main content */}
+        <View style={s.cardBody}>
+          <Text style={[s.cardName, item.bought && s.cardNameDone]} numberOfLines={1}>
             {item.name}
           </Text>
-          <View style={s.rowMeta}>
-            <View style={[s.badge, { backgroundColor: cc + (T.mode === 'light' ? '18' : '2A') }]}>
-              <Text style={[s.badgeText, { color: cc }]}>
-                {catEmoji(item.category)}  {item.category}
-              </Text>
+          <View style={s.cardMeta}>
+            <View style={[s.badge, { backgroundColor: cc + (T.mode === 'light' ? '18' : '28') }]}>
+              <Text style={[s.badgeText, { color: cc }]}>{catEmoji(item.category)}  {item.category}</Text>
             </View>
             {item.quantity > 1 && (
-              <Text style={s.rowQty}>× {item.quantity}  ·  {fmt(item.price)} each</Text>
+              <Text style={s.cardQty}>× {item.quantity}  ·  {fmt(item.price)} ea.</Text>
             )}
           </View>
         </View>
 
         {/* Price + delete */}
-        <View style={s.rowRight}>
-          <Text style={[s.rowPrice, item.bought && { color: T.green }]}>{fmt(tot)}</Text>
-          <TouchableOpacity onPress={() => deleteItem(item.id)} hitSlop={8}>
+        <View style={s.cardRight}>
+          <Text style={[s.cardPrice, item.bought && { color: T.green }]}>{fmt(tot)}</Text>
+          <TouchableOpacity onPress={() => deleteItem(item.id)} hitSlop={8} style={s.trashBtn}>
             <Ionicons name="trash-outline" size={15} color={T.textSub} />
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
     );
   };
+
+  const activeCat = cats.find(c => c.name === form.category);
 
   // ── UI ─────────────────────────────────────────────────────────────────────
   return (
@@ -181,36 +174,64 @@ export default function ShoppingListScreen() {
       {/* Header */}
       <View style={s.header}>
         <View>
-          <Text style={s.appName}>ToBuy</Text>
-          <Text style={s.appSub}>{items.length} items · {boughtCnt} done</Text>
+          <Text style={s.logo}>ToBuy</Text>
+          <Text style={s.logoSub}>{items.length} items · {boughtCnt} bought</Text>
         </View>
-        <TouchableOpacity style={s.themeBtn} onPress={T.toggleTheme}>
-          <Ionicons name={T.mode === 'light' ? 'moon-outline' : 'sunny-outline'} size={20} color={T.text} />
-        </TouchableOpacity>
+        <View style={s.headerRight}>
+          <View style={s.curBadge}>
+            <Text style={s.curBadgeFlag}>{T.currency.flag}</Text>
+            <Text style={s.curBadgeCode}>{T.currency.code}</Text>
+          </View>
+          <TouchableOpacity style={s.iconBtn} onPress={T.toggleTheme}>
+            <Ionicons name={T.mode === 'light' ? 'moon-outline' : 'sunny-outline'} size={19} color={T.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Stats */}
-      <View style={s.statsRow}>
-        <StatCard label="Total" value={fmt(totalAmt)} color={T.accent} T={T} />
-        <StatCard label="Spent" value={fmt(spentAmt)} color={T.green} T={T} />
-        <StatCard label="Left" value={fmt(leftAmt)} color={T.textSub} T={T} />
+      {/* Budget strip */}
+      <View style={s.budgetStrip}>
+        <BudgetStat label="Budget" value={fmt(totalAmt)} color={T.accent} T={T} />
+        <View style={s.budgetDiv} />
+        <BudgetStat label="Spent" value={fmt(spentAmt)} color={T.green} T={T} />
+        <View style={s.budgetDiv} />
+        <BudgetStat label="Left" value={fmt(leftAmt)} color={T.textSub} T={T} />
       </View>
 
-      {/* Progress */}
+      {/* Progress bar */}
       <View style={s.progressWrap}>
+        <View style={s.progressRow}>
+          <Text style={s.progressLabel}>{Math.round(progress * 100)}% spent</Text>
+          <Text style={s.progressLabel}>{boughtCnt}/{items.length} items</Text>
+        </View>
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
         </View>
-        <Text style={s.progressLabel}>{Math.round(progress * 100)}% of budget spent</Text>
       </View>
 
-      {/* Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={s.filterContent}>
-        {allFilters.map(f => (
-          <TouchableOpacity key={f} style={[s.chip, filter === f && s.chipActive]} onPress={() => setFilter(f)}>
-            <Text style={[s.chipText, filter === f && s.chipTextActive]}>{f}</Text>
-          </TouchableOpacity>
-        ))}
+      {/* Filter chips */}
+      <ScrollView
+        horizontal showsHorizontalScrollIndicator={false}
+        style={s.filterScroll}
+        contentContainerStyle={s.filterContent}
+      >
+        {allFilters.map(f => {
+          const active = filter === f;
+          const catCol = cats.find(c => c.name === f)?.color;
+          return (
+            <TouchableOpacity
+              key={f}
+              style={[s.chip, active && (catCol
+                ? { backgroundColor: catCol, borderColor: catCol }
+                : s.chipActive)]}
+              onPress={() => setFilter(f)}
+            >
+              {cats.find(c => c.name === f) && (
+                <Text style={s.chipEmoji}>{catEmoji(f)}</Text>
+              )}
+              <Text style={[s.chipText, active && s.chipTextActive]}>{f}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
       {/* List */}
@@ -232,19 +253,33 @@ export default function ShoppingListScreen() {
 
       {/* FAB */}
       <TouchableOpacity style={[s.fab, { backgroundColor: T.accent }]} onPress={openAdd}>
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={30} color="#fff" />
       </TouchableOpacity>
 
-      {/* ── Add / Edit Modal ── */}
+      {/* Add / Edit Modal */}
       <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <Pressable style={s.overlay} onPress={() => { Keyboard.dismiss(); setModalVisible(false); }}>
           <Pressable style={s.sheet} onPress={() => { }}>
 
-            <View style={s.handle} />
-            <Text style={s.sheetTitle}>{editingId ? 'Edit Item' : 'New Item'}</Text>
+            <View style={s.sheetHandle} />
+
+            {/* Sheet header */}
+            <View style={s.sheetHeader}>
+              <View>
+                <Text style={s.sheetTitle}>{editingId ? 'Edit Item' : 'New Item'}</Text>
+                {activeCat && (
+                  <Text style={[s.sheetSub, { color: activeCat.color }]}>
+                    {activeCat.emoji}  {activeCat.name}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={s.closeBtn}>
+                <Ionicons name="close" size={18} color={T.textSub} />
+              </TouchableOpacity>
+            </View>
 
             {/* Name */}
-            <Text style={s.label}>Name</Text>
+            <Text style={s.label}>ITEM NAME</Text>
             <TextInput
               style={s.input}
               placeholder="e.g. Mechanical Keyboard"
@@ -254,10 +289,10 @@ export default function ShoppingListScreen() {
               autoFocus
             />
 
-            {/* Price + Qty */}
-            <View style={{ flexDirection: 'row', gap: 12 }}>
+            {/* Price + qty */}
+            <View style={s.inputRow}>
               <View style={{ flex: 2 }}>
-                <Text style={s.label}>Price ($)</Text>
+                <Text style={s.label}>PRICE ({T.currency.symbol})</Text>
                 <TextInput
                   style={s.input}
                   placeholder="0.00"
@@ -268,7 +303,7 @@ export default function ShoppingListScreen() {
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.label}>Qty</Text>
+                <Text style={s.label}>QTY</Text>
                 <TextInput
                   style={s.input}
                   placeholder="1"
@@ -280,10 +315,10 @@ export default function ShoppingListScreen() {
               </View>
             </View>
 
-            {/* Category picker */}
-            <Text style={s.label}>Category</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: showCatInput ? 10 : 20 }}>
-              {/* Existing category chips */}
+            {/* Category */}
+            <Text style={s.label}>CATEGORY</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: showCatInput ? 10 : 20 }}>
               {cats.map(cat => {
                 const active = form.category === cat.name;
                 return (
@@ -298,21 +333,16 @@ export default function ShoppingListScreen() {
                   </TouchableOpacity>
                 );
               })}
-
-              {/* + New chip */}
               <TouchableOpacity
                 style={[s.catChip, s.catChipNew, showCatInput && { borderColor: T.accent }]}
-                onPress={() => {
-                  setShowCatInput(true);
-                  setTimeout(() => catInputRef.current?.focus(), 80);
-                }}
+                onPress={() => { setShowCatInput(true); setTimeout(() => catInputRef.current?.focus(), 80); }}
               >
-                <Ionicons name="add" size={14} color={showCatInput ? T.accent : T.textSub} />
+                <Ionicons name="add" size={13} color={showCatInput ? T.accent : T.textSub} />
                 <Text style={[s.catChipText, { marginLeft: 4 }, showCatInput && { color: T.accent }]}>New</Text>
               </TouchableOpacity>
             </ScrollView>
 
-            {/* Inline new-category input */}
+            {/* New category inline input */}
             {showCatInput && (
               <View style={s.newCatRow}>
                 <TextInput
@@ -324,17 +354,15 @@ export default function ShoppingListScreen() {
                   onChangeText={setNewCatName}
                   onSubmitEditing={confirmAddCategory}
                   returnKeyType="done"
-                  autoCorrect={false}
                 />
                 <TouchableOpacity
-                  style={[s.newCatConfirm, { backgroundColor: newCatName.trim() ? T.accent : T.border }]}
+                  style={[s.newCatOk, { backgroundColor: newCatName.trim() ? T.accent : T.border }]}
                   onPress={confirmAddCategory}
-                  disabled={!newCatName.trim()}
                 >
                   <Ionicons name="checkmark" size={16} color="#fff" />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={s.newCatCancel}
+                  style={s.newCatClose}
                   onPress={() => { setShowCatInput(false); setNewCatName(''); }}
                 >
                   <Ionicons name="close" size={16} color={T.textSub} />
@@ -344,26 +372,37 @@ export default function ShoppingListScreen() {
 
             {/* Total preview */}
             {previewTotal && (
-              <View style={s.preview}>
-                <Text style={s.previewLabel}>Total</Text>
-                <Text style={[s.previewValue, { color: T.accent }]}>{previewTotal}</Text>
+              <View style={[s.preview, activeCat && { borderColor: activeCat.color + '50' }]}>
+                <View>
+                  <Text style={s.previewLabel}>Total preview</Text>
+                  {form.quantity && parseInt(form.quantity) > 1 && (
+                    <Text style={s.previewSub}>
+                      {form.quantity} × {T.currency.symbol}{parseFloat(form.price || '0').toFixed(2)}
+                    </Text>
+                  )}
+                </View>
+                <Text style={[s.previewValue, activeCat && { color: activeCat.color }]}>
+                  {previewTotal}
+                </Text>
               </View>
             )}
 
-            {/* Actions */}
+            {/* Action buttons */}
             <View style={s.sheetActions}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setModalVisible(false)}>
                 <Text style={s.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.saveBtn, (!form.name.trim() || !form.price) && { opacity: 0.35 }]}
+                style={[s.saveBtn,
+                { backgroundColor: activeCat?.color ?? T.accent },
+                (!form.name.trim() || !form.price) && { opacity: 0.35 },
+                ]}
                 onPress={save}
                 disabled={!form.name.trim() || !form.price}
               >
-                <Text style={s.saveBtnText}>{editingId ? 'Save Changes' : 'Add Item'}</Text>
+                <Text style={s.saveBtnText}>{editingId ? 'Save Changes' : 'Add to List'}</Text>
               </TouchableOpacity>
             </View>
-
           </Pressable>
         </Pressable>
       </Modal>
@@ -371,106 +410,207 @@ export default function ShoppingListScreen() {
   );
 }
 
-// ─── Stat Card ─────────────────────────────────────────────────────────────────
-function StatCard({ label, value, color, T }: { label: string; value: string; color: string; T: ReturnType<typeof useTheme> }) {
+// ─── Budget stat ───────────────────────────────────────────────────────────────
+function BudgetStat({ label, value, color, T }: {
+  label: string; value: string; color: string; T: ReturnType<typeof useTheme>;
+}) {
   const s = makeStyles(T);
   return (
-    <View style={s.statCard}>
-      <Text style={[s.statValue, { color }]}>{value}</Text>
-      <Text style={s.statLabel}>{label}</Text>
+    <View style={s.budgetStat}>
+      <Text style={[s.budgetVal, { color }]}>{value}</Text>
+      <Text style={s.budgetLabel}>{label}</Text>
     </View>
   );
 }
 
-// ─── Dynamic styles ────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 function makeStyles(T: ReturnType<typeof useTheme>) {
+  const isDark = T.mode === 'dark';
+
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: T.bg },
 
     // Header
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8 },
-    appName: { fontSize: 28, fontWeight: '700', color: T.text, letterSpacing: -0.5 },
-    appSub: { fontSize: 13, color: T.textSub, marginTop: 1 },
-    themeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, justifyContent: 'center', alignItems: 'center' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 },
+    logo: { fontSize: 26, fontWeight: '800', color: T.text, letterSpacing: -0.6 },
+    logoSub: { fontSize: 12, color: T.textSub, marginTop: 2, fontWeight: '500' },
+    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    curBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: T.surface, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: T.border },
+    curBadgeFlag: { fontSize: 14 },
+    curBadgeCode: { fontSize: 12, fontWeight: '700', color: T.text },
+    iconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, justifyContent: 'center', alignItems: 'center' },
 
-    // Stats
-    statsRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 16 },
-    statCard: { flex: 1, backgroundColor: T.surface, borderRadius: 12, borderWidth: 1, borderColor: T.border, paddingVertical: 14, paddingHorizontal: 12 },
-    statValue: { fontSize: 17, fontWeight: '700', marginBottom: 3 },
-    statLabel: { fontSize: 12, color: T.textSub, fontWeight: '500' },
+    // Budget strip
+    budgetStrip: {
+      flexDirection: 'row', marginHorizontal: 16, backgroundColor: T.surface,
+      borderRadius: 16, borderWidth: 1, borderColor: isDark ? T.cardHighlight : T.border,
+      marginBottom: 16,
+      ...(isDark ? {
+        shadowColor: '#4DA3FF', shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.1, shadowRadius: 16, elevation: 0,
+      } : {}),
+    },
+    budgetStat: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+    budgetVal: { fontSize: 17, fontWeight: '700', marginBottom: 3, letterSpacing: -0.3 },
+    budgetLabel: { fontSize: 11, color: T.textSub, fontWeight: '600', letterSpacing: 0.3 },
+    budgetDiv: { width: 1, backgroundColor: T.border, marginVertical: 14 },
 
     // Progress
-    progressWrap: { paddingHorizontal: 20, marginBottom: 16 },
-    progressTrack: { height: 4, backgroundColor: T.border, borderRadius: 2, overflow: 'hidden' },
-    progressFill: { height: '100%', backgroundColor: T.green, borderRadius: 2 },
-    progressLabel: { fontSize: 12, color: T.textSub, marginTop: 6 },
+    progressWrap: { paddingHorizontal: 20, marginBottom: 14 },
+    progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 },
+    progressLabel: { fontSize: 12, color: T.textSub, fontWeight: '500' },
+    progressTrack: { height: 5, backgroundColor: isDark ? '#FFFFFF08' : T.border, borderRadius: 3, overflow: 'hidden' },
+    progressFill: { height: '100%', backgroundColor: T.green, borderRadius: 3 },
 
-    // Filters
-    filterScroll: { flexGrow: 0, marginBottom: 12 },
-    filterContent: { paddingHorizontal: 16, gap: 10, marginBottom: 20 },
-    chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 24, borderWidth: 1.5, borderColor: T.border, backgroundColor: T.surface, minHeight: 42, justifyContent: 'center' },
-    chipActive: { backgroundColor: T.text, borderColor: T.text },
-    chipText: { fontSize: 14, fontWeight: '600', color: T.textSub },
-    chipTextActive: { color: T.bg, fontWeight: '700' },
+    // Filter chips
+    filterScroll: { flexGrow: 0, marginBottom: 14 },
+    filterContent: { paddingHorizontal: 16, gap: 8, marginBottom: 2 },
+    chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 24, borderWidth: 1.5, borderColor: T.border, backgroundColor: T.surface, minHeight: 42 },
+    chipActive: { backgroundColor: isDark ? T.accent : T.text, borderColor: isDark ? T.accent : T.text },
+    chipEmoji: { fontSize: 13 },
+    chipText: { fontSize: 13, fontWeight: '600', color: T.textSub },
+    chipTextActive: { color: '#fff' },
 
     // List
     listContent: { paddingHorizontal: 16, paddingBottom: 120 },
 
-    // Row
-    row: { flexDirection: 'row', alignItems: 'center', backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 14 },
-    rowBody: { flex: 1, paddingHorizontal: 12 },
-    rowName: { fontSize: 15, fontWeight: '600', color: T.text, marginBottom: 4 },
-    rowNameDone: { textDecorationLine: 'line-through', color: T.textSub, fontWeight: '400' },
-    rowMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-    rowQty: { fontSize: 12, color: T.textSub },
-    rowRight: { alignItems: 'flex-end', gap: 6, minWidth: 60 },
-    rowPrice: { fontSize: 16, fontWeight: '700', color: T.text },
+    // Item card
+    card: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: T.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: isDark ? T.cardHighlight : T.border,
+      overflow: 'hidden', minHeight: 72,
+      ...(isDark ? {
+        shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.5, shadowRadius: 8, elevation: 4,
+      } : {}),
+    },
+    stripe: { width: 4, alignSelf: 'stretch' },
+    cb: {
+      width: 24, height: 24, borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: isDark ? '#FFFFFF18' : T.border,
+      justifyContent: 'center', alignItems: 'center',
+      marginLeft: 12,
+      backgroundColor: isDark ? '#FFFFFF08' : T.surfaceHigh,
+    },
+    cardBody: { flex: 1, paddingHorizontal: 12, paddingVertical: 14 },
+    cardName: { fontSize: 15, fontWeight: '600', color: T.text, marginBottom: 5, letterSpacing: -0.1 },
+    cardNameDone: { textDecorationLine: 'line-through', color: T.textSub, fontWeight: '400' },
+    cardMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+    cardQty: { fontSize: 12, color: T.textSub, fontWeight: '500' },
+    cardRight: { alignItems: 'flex-end', paddingRight: 14, gap: 6, minWidth: 68 },
+    cardPrice: { fontSize: 16, fontWeight: '700', color: T.text, letterSpacing: -0.3 },
+    trashBtn: { padding: 4 },
 
-    // Checkbox
-    cb: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: T.border, justifyContent: 'center', alignItems: 'center', backgroundColor: T.surfaceHigh },
-
-    // Badge
+    // Category badge
     badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
     badgeText: { fontSize: 11, fontWeight: '600' },
 
-    // FAB
-    fab: { position: 'absolute', bottom: 28, right: 20, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 6 },
+    // FAB — glows in dark mode
+    fab: {
+      position: 'absolute', bottom: 28, right: 20,
+      width: 58, height: 58, borderRadius: 29,
+      justifyContent: 'center', alignItems: 'center',
+      shadowColor: isDark ? T.accent : '#000',
+      shadowOffset: { width: 0, height: isDark ? 0 : 3 },
+      shadowOpacity: isDark ? 0.55 : 0.2,
+      shadowRadius: isDark ? 18 : 8,
+      elevation: isDark ? 14 : 8,
+    },
 
-    // Empty
+    // Empty state
     empty: { alignItems: 'center', paddingTop: 80 },
-    emptyEmoji: { fontSize: 48, marginBottom: 16 },
-    emptyTitle: { fontSize: 18, fontWeight: '600', color: T.text, marginBottom: 6 },
-    emptySub: { fontSize: 14, color: T.textSub },
+    emptyEmoji: { fontSize: 52, marginBottom: 16 },
+    emptyTitle: { fontSize: 18, fontWeight: '700', color: T.text, marginBottom: 6 },
+    emptySub: { fontSize: 14, color: T.textSub, fontWeight: '500' },
 
-    // Modal sheet
-    overlay: { flex: 1, backgroundColor: T.mode === 'light' ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-    sheet: { backgroundColor: T.surfaceHigh, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: T.border, padding: 24, paddingBottom: Platform.OS === 'ios' ? 42 : 28 },
-    handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: T.border, alignSelf: 'center', marginBottom: 20 },
-    sheetTitle: { fontSize: 18, fontWeight: '700', color: T.text, marginBottom: 20 },
-    label: { fontSize: 12, fontWeight: '600', color: T.textSub, letterSpacing: 0.4, marginBottom: 7, marginTop: 2 },
-    input: { backgroundColor: T.surface, borderRadius: 10, borderWidth: 1, borderColor: T.border, color: T.text, fontSize: 15, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12 },
+    // Modal
+    overlay: {
+      flex: 1,
+      backgroundColor: isDark ? 'rgba(0,0,0,0.82)' : 'rgba(0,0,0,0.3)',
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: T.surfaceHigh,
+      borderTopLeftRadius: 26, borderTopRightRadius: 26,
+      borderWidth: 1, borderColor: isDark ? T.cardHighlight : T.border,
+      padding: 24, paddingBottom: Platform.OS === 'ios' ? 44 : 28,
+      maxHeight: '90%',
+    },
+    sheetHandle: {
+      width: 38, height: 4, borderRadius: 2,
+      backgroundColor: isDark ? T.accent + '55' : T.border,
+      alignSelf: 'center', marginBottom: 20,
+    },
+    sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 },
+    sheetTitle: { fontSize: 20, fontWeight: '700', color: T.text, letterSpacing: -0.4 },
+    sheetSub: { fontSize: 13, fontWeight: '500', marginTop: 3 },
+    closeBtn: {
+      width: 32, height: 32, borderRadius: 16,
+      backgroundColor: isDark ? '#FFFFFF0A' : T.surface,
+      borderWidth: 1, borderColor: T.border,
+      justifyContent: 'center', alignItems: 'center',
+    },
+
+    label: { fontSize: 11, fontWeight: '700', color: T.textSub, letterSpacing: 0.8, marginBottom: 8, marginTop: 2 },
+    input: {
+      backgroundColor: isDark ? '#FFFFFF07' : T.surface,
+      borderRadius: 12, borderWidth: 1.5, borderColor: T.border,
+      color: T.text, fontSize: 15, fontWeight: '500',
+      paddingHorizontal: 14, paddingVertical: 13, marginBottom: 16,
+    },
+    inputRow: { flexDirection: 'row', gap: 12 },
 
     // Category chips in modal
-    catChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: T.border, backgroundColor: T.surface, marginRight: 8 },
+    catChip: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingHorizontal: 13, paddingVertical: 9,
+      borderRadius: 20, borderWidth: 1.5, borderColor: T.border,
+      backgroundColor: isDark ? '#FFFFFF07' : T.surface,
+      marginRight: 8,
+    },
     catChipNew: { borderStyle: 'dashed' },
-    catChipText: { fontSize: 13, fontWeight: '500', color: T.textSub },
+    catChipText: { fontSize: 13, fontWeight: '600', color: T.textSub },
 
-    // Inline new-category row
+    // Inline new cat input
     newCatRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
-    newCatInput: { flex: 1, backgroundColor: T.surface, borderRadius: 10, borderWidth: 1, borderColor: T.accent, color: T.text, fontSize: 14, paddingHorizontal: 12, paddingVertical: 10 },
-    newCatConfirm: { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-    newCatCancel: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: T.border, backgroundColor: T.surface, justifyContent: 'center', alignItems: 'center' },
+    newCatInput: {
+      flex: 1,
+      backgroundColor: isDark ? '#FFFFFF07' : T.surface,
+      borderRadius: 10, borderWidth: 1.5, borderColor: T.accent,
+      color: T.text, fontSize: 14, fontWeight: '500',
+      paddingHorizontal: 12, paddingVertical: 10,
+    },
+    newCatOk: { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+    newCatClose: {
+      width: 38, height: 38, borderRadius: 10,
+      borderWidth: 1, borderColor: T.border,
+      backgroundColor: isDark ? '#FFFFFF07' : T.surface,
+      justifyContent: 'center', alignItems: 'center',
+    },
 
-    // Preview
-    preview: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: T.surface, borderRadius: 10, borderWidth: 1, borderColor: T.border, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 20 },
-    previewLabel: { fontSize: 13, color: T.textSub, fontWeight: '500' },
-    previewValue: { fontSize: 18, fontWeight: '700' },
+    // Total preview
+    preview: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      backgroundColor: isDark ? '#FFFFFF05' : T.surface,
+      borderRadius: 12, borderWidth: 1.5, borderColor: T.border,
+      paddingHorizontal: 16, paddingVertical: 14, marginBottom: 20,
+    },
+    previewLabel: { fontSize: 12, color: T.textSub, fontWeight: '600', letterSpacing: 0.3 },
+    previewSub: { fontSize: 11, color: T.textSub, marginTop: 2 },
+    previewValue: { fontSize: 22, fontWeight: '800', color: T.accent, letterSpacing: -0.5 },
 
     // Actions
     sheetActions: { flexDirection: 'row', gap: 12 },
-    cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, alignItems: 'center' },
+    cancelBtn: {
+      flex: 1, paddingVertical: 15, borderRadius: 14,
+      backgroundColor: isDark ? '#FFFFFF08' : T.surface,
+      borderWidth: 1, borderColor: T.border,
+      alignItems: 'center',
+    },
     cancelText: { fontSize: 15, fontWeight: '600', color: T.textSub },
-    saveBtn: { flex: 2, paddingVertical: 14, borderRadius: 12, backgroundColor: T.accent, alignItems: 'center' },
+    saveBtn: { flex: 2, paddingVertical: 15, borderRadius: 14, alignItems: 'center' },
     saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   });
 }
