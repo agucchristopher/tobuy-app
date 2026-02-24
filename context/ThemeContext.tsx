@@ -91,6 +91,7 @@ interface AppContextValue extends AppTheme {
     currency: CurrencyInfo;
     setCurrency: (c: CurrencyCode) => void;
     formatPrice: (amount: number) => string;
+    formatCompact: (amount: number) => string;  // 1700 → ₦1.7k  100000 → ₦100k
 }
 
 const AppContext = createContext<AppContextValue>({
@@ -99,6 +100,7 @@ const AppContext = createContext<AppContextValue>({
     currency: CURRENCIES[0],
     setCurrency: () => { },
     formatPrice: (n) => `$${n.toFixed(2)}`,
+    formatCompact: (n) => `$${n.toFixed(2)}`,
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -111,11 +113,45 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     const currency = CURRENCIES.find(c => c.code === currencyCode) ?? CURRENCIES[0];
 
-    // JPY has no decimal cents, others show 2 decimal places
-    const formatPrice = (amount: number) =>
-        currencyCode === 'JPY'
-            ? `${currency.symbol}${Math.round(amount).toLocaleString()}`
-            : `${currency.symbol}${amount.toFixed(2)}`;
+    // ── Shared helper: insert commas every 3 digits in the integer part ───────
+    const withCommas = (fixed: string): string => {
+        const [int, dec] = fixed.split('.');
+        const intCommas = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        return dec !== undefined ? `${intCommas}.${dec}` : intCommas;
+    };
+
+    // Full price with commas — used on item cards and preview totals
+    const formatPrice = (amount: number): string => {
+        if (currencyCode === 'JPY') {
+            return `${currency.symbol}${withCommas(Math.round(amount).toString())}`;
+        }
+        return `${currency.symbol}${withCommas(amount.toFixed(2))}`;
+    };
+
+    // Compact formatter for the budget strip — shortens large numbers
+    // e.g.  1,700 → ₦1.7k  |  10,000 → ₦10k  |  1,500,000 → ₦1.5m
+    // Numbers below 1000 get full price formatting (with commas if ever needed)
+    const compactNum = (n: number): string => {
+        const abs = Math.abs(n);
+        if (abs >= 1_000_000) {
+            const v = abs / 1_000_000;
+            const s = Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, '');
+            return `${s}m`;
+        }
+        if (abs >= 1_000) {
+            const v = abs / 1_000;
+            const s = Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, '');
+            return `${s}k`;
+        }
+        // Below 1000 — show with normal comma formatting
+        return currencyCode === 'JPY'
+            ? withCommas(Math.round(abs).toString())
+            : withCommas(abs.toFixed(2));
+    };
+
+    const formatCompact = (amount: number): string =>
+        `${currency.symbol}${compactNum(amount)}`;
+
 
     return (
         <AppContext.Provider value={{
@@ -124,6 +160,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             currency,
             setCurrency,
             formatPrice,
+            formatCompact,
         }}>
             {children}
         </AppContext.Provider>
