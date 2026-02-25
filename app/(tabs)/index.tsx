@@ -1,4 +1,4 @@
-import Storage from '@/lib/storage';
+import Storage from '@/lib/secureStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -31,7 +31,6 @@ import {
   CATEGORIES,
   CATEGORY_COLORS,
   CATEGORY_EMOJIS,
-  DEMO_ITEMS,
   NEW_CATEGORY_PALETTE,
   ShoppingItem,
 } from '@/constants/data';
@@ -78,12 +77,12 @@ export default function ShoppingListScreen() {
         ]);
 
         if (savedItems) setItems(JSON.parse(savedItems));
-        else setItems(DEMO_ITEMS); // Fallback to demo items if empty
+        else setItems([]); // Fallback to empty if empty
 
         if (savedCats) setCats(JSON.parse(savedCats));
       } catch (e) {
         console.error('Failed to load data', e);
-        setItems(DEMO_ITEMS);
+        setItems([]);
       } finally {
         setLoading(false);
       }

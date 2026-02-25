@@ -1,4 +1,4 @@
-import Storage from '@/lib/storage';
+import Storage from '@/lib/secureStore';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useColorScheme } from 'react-native';
 
