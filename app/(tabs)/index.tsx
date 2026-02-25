@@ -2,6 +2,7 @@ import Storage from '@/lib/secureStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   FlatList,
   Keyboard,
@@ -247,6 +248,36 @@ export default function ShoppingListScreen() {
     setShowCatInput(false); setNewCatName('');
   };
 
+  const handleLongPressCategory = (catName: string) => {
+    // Only allow deleting custom categories, not default ones (or you can allow all if preferred)
+    const isDefault = DEFAULT_CATS.some(c => c.name === catName);
+
+    Alert.alert(
+      "Manage Category",
+      `What would you like to do with "${catName}"?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            const hasItems = items.some(i => i.category === catName);
+            if (hasItems) {
+              Alert.alert(
+                "Cannot Delete",
+                `There are still items in the "${catName}" category. Please remove or reassign them first.`
+              );
+              return;
+            }
+
+            setCats(p => p.filter(c => c.name !== catName));
+            if (filter === catName) setFilter('All');
+          }
+        }
+      ]
+    );
+  };
+
   const toggleBought = (id: string) => setItems(p => p.map(i => i.id === id ? { ...i, bought: !i.bought } : i));
   const deleteItem = (id: string) => setItems(p => p.filter(i => i.id !== id));
 
@@ -354,6 +385,7 @@ export default function ShoppingListScreen() {
                 ? { backgroundColor: catCol, borderColor: catCol }
                 : s.chipActive)]}
               onPress={() => setFilter(f)}
+              onLongPress={() => !BASE_FILTERS.includes(f as any) ? handleLongPressCategory(f) : null}
             >
               {cats.find(c => c.name === f) && (
                 <Text style={s.chipEmoji}>{catEmoji(f)}</Text>
@@ -490,6 +522,7 @@ export default function ShoppingListScreen() {
                       key={cat.name}
                       style={[s.catChip, active && { backgroundColor: cat.color, borderColor: cat.color }]}
                       onPress={() => { setForm(p => ({ ...p, category: cat.name })); setShowCatInput(false); }}
+                      onLongPress={() => handleLongPressCategory(cat.name)}
                     >
                       <Text style={[s.catChipText, active && { color: '#fff' }]}>
                         {cat.emoji}  {cat.name}

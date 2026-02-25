@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
     ScrollView,
     StyleSheet,
@@ -9,15 +10,30 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { CATEGORY_COLORS, CATEGORY_EMOJIS, DEMO_ITEMS } from '@/constants/data';
+import { CATEGORY_COLORS, CATEGORY_EMOJIS, ShoppingItem } from '@/constants/data';
 import { CURRENCIES, CurrencyCode, useTheme } from '@/context/ThemeContext';
+import Storage from '@/lib/secureStore';
 
 export default function StatsScreen() {
     const T = useTheme();
     const s = makeStyles(T);
     const fmt = T.formatPrice;
 
-    const items = DEMO_ITEMS;
+    const [items, setItems] = useState<ShoppingItem[]>([]);
+
+    useFocusEffect(
+        useCallback(() => {
+            const loadData = async () => {
+                try {
+                    const savedItems = await Storage.getItem('tobuy_items');
+                    if (savedItems) setItems(JSON.parse(savedItems));
+                } catch (e) {
+                    console.error('Failed to load items in stats', e);
+                }
+            };
+            loadData();
+        }, [])
+    );
 
     const total = items.reduce((a, i) => a + i.price * i.quantity, 0);
     const spent = items.filter(i => i.bought).reduce((a, i) => a + i.price * i.quantity, 0);
