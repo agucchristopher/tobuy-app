@@ -1,5 +1,6 @@
 import Storage from '@/lib/secureStore';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -36,6 +37,7 @@ import {
   ShoppingItem,
 } from '@/constants/data';
 import { useTheme } from '@/context/ThemeContext';
+import * as Haptics from 'expo-haptics';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -108,7 +110,8 @@ export default function ShoppingListScreen() {
   // ── Modal state ───────────────────────────────────────────────────────────
   const [modalMounted, setModalMounted] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', price: '', quantity: '1', category: DEFAULT_CATS[0].name });
+  const [form, setForm] = useState({ name: '', price: '', quantity: '1', category: DEFAULT_CATS[0].name, reminderDate: null as number | null });
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCatInput, setShowCatInput] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const catInputRef = useRef<TextInput>(null);
@@ -209,13 +212,15 @@ export default function ShoppingListScreen() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const openAdd = () => {
-    setForm({ name: '', price: '', quantity: '1', category: cats[0]?.name ?? '' });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setForm({ name: '', price: '', quantity: '1', category: cats[0]?.name ?? '', reminderDate: null });
     setEditingId(null); setShowCatInput(false); setNewCatName('');
     openSheet();
   };
 
   const openEdit = (item: ShoppingItem) => {
-    setForm({ name: item.name, price: String(item.price), quantity: String(item.quantity), category: item.category });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setForm({ name: item.name, price: String(item.price), quantity: String(item.quantity), category: item.category, reminderDate: item.reminderDate ?? null });
     setEditingId(item.id); setShowCatInput(false); setNewCatName('');
     openSheet();
   };
@@ -223,32 +228,39 @@ export default function ShoppingListScreen() {
   const save = () => {
     const price = parseFloat(form.price);
     const qty = Math.max(1, parseInt(form.quantity) || 1);
-    if (!form.name.trim() || isNaN(price) || price <= 0) return;
+    if (!form.name.trim() || isNaN(price) || price <= 0) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
     if (editingId) {
       setItems(p => p.map(i => i.id === editingId
-        ? { ...i, name: form.name.trim(), price, quantity: qty, category: form.category }
+        ? { ...i, name: form.name.trim(), price, quantity: qty, category: form.category, reminderDate: form.reminderDate }
         : i));
     } else {
       setItems(p => [{
         id: Date.now().toString(), name: form.name.trim(), price,
-        quantity: qty, category: form.category, bought: false, createdAt: Date.now(),
+        quantity: qty, category: form.category, bought: false, createdAt: Date.now(), reminderDate: form.reminderDate
       }, ...p]);
     }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     closeSheet();
   };
 
   const confirmAddCategory = () => {
     const trimmed = newCatName.trim();
     if (!trimmed || cats.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       setShowCatInput(false); setNewCatName(''); return;
     }
     const color = NEW_CATEGORY_PALETTE[cats.length % NEW_CATEGORY_PALETTE.length];
     setCats(p => [...p, { name: trimmed, color, emoji: '🏷️' }]);
     setForm(f => ({ ...f, category: trimmed }));
     setShowCatInput(false); setNewCatName('');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   const handleLongPressCategory = (catName: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     // Only allow deleting custom categories, not default ones (or you can allow all if preferred)
     const isDefault = DEFAULT_CATS.some(c => c.name === catName);
 
@@ -263,6 +275,7 @@ export default function ShoppingListScreen() {
           onPress: () => {
             const hasItems = items.some(i => i.category === catName);
             if (hasItems) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
               Alert.alert(
                 "Cannot Delete",
                 `There are still items in the "${catName}" category. Please remove or reassign them first.`
@@ -272,14 +285,21 @@ export default function ShoppingListScreen() {
 
             setCats(p => p.filter(c => c.name !== catName));
             if (filter === catName) setFilter('All');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           }
         }
       ]
     );
   };
 
-  const toggleBought = (id: string) => setItems(p => p.map(i => i.id === id ? { ...i, bought: !i.bought } : i));
-  const deleteItem = (id: string) => setItems(p => p.filter(i => i.id !== id));
+  const toggleBought = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setItems(p => p.map(i => i.id === id ? { ...i, bought: !i.bought } : i));
+  };
+  const deleteItem = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+    setItems(p => p.filter(i => i.id !== id));
+  };
 
   const previewAmt = form.price ? parseFloat(form.price) * (parseInt(form.quantity) || 1) : null;
   const previewTotal = previewAmt != null ? fmt(previewAmt) : null;
@@ -315,6 +335,14 @@ export default function ShoppingListScreen() {
             {item.quantity > 1 && (
               <Text style={s.cardQty}>× {item.quantity}  ·  {fmt(item.price)} ea.</Text>
             )}
+            {item.reminderDate && (
+              <View style={[s.badge, { backgroundColor: T.accent + '22' }]}>
+                <Ionicons name="alarm-outline" size={10} color={T.accent} style={{ marginRight: 2 }} />
+                <Text style={[s.badgeText, { color: T.accent }]}>
+                  {new Date(item.reminderDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
         <View style={s.cardRight}>
@@ -342,7 +370,7 @@ export default function ShoppingListScreen() {
             <Text style={s.curBadgeFlag}>{T.currency.flag}</Text>
             <Text style={s.curBadgeCode}>{T.currency.code}</Text>
           </View>
-          <TouchableOpacity style={s.iconBtn} onPress={T.toggleTheme}>
+          <TouchableOpacity style={s.iconBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); T.toggleTheme(); }}>
             <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={19} color={T.text} />
           </TouchableOpacity>
         </View>
@@ -384,7 +412,7 @@ export default function ShoppingListScreen() {
               active && (catCol
                 ? { backgroundColor: catCol, borderColor: catCol }
                 : s.chipActive)]}
-              onPress={() => setFilter(f)}
+              onPress={() => { Haptics.selectionAsync(); setFilter(f); }}
               onLongPress={() => !BASE_FILTERS.includes(f as any) ? handleLongPressCategory(f) : null}
             >
               {cats.find(c => c.name === f) && (
@@ -469,7 +497,7 @@ export default function ShoppingListScreen() {
                     </Text>
                   )}
                 </View>
-                <TouchableOpacity onPress={closeSheet} style={s.closeBtn}>
+                <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); closeSheet(); }} style={s.closeBtn}>
                   <Ionicons name="close" size={18} color={T.textSub} />
                 </TouchableOpacity>
               </View>
@@ -521,7 +549,7 @@ export default function ShoppingListScreen() {
                     <TouchableOpacity
                       key={cat.name}
                       style={[s.catChip, active && { backgroundColor: cat.color, borderColor: cat.color }]}
-                      onPress={() => { setForm(p => ({ ...p, category: cat.name })); setShowCatInput(false); }}
+                      onPress={() => { Haptics.selectionAsync(); setForm(p => ({ ...p, category: cat.name })); setShowCatInput(false); }}
                       onLongPress={() => handleLongPressCategory(cat.name)}
                     >
                       <Text style={[s.catChipText, active && { color: '#fff' }]}>
@@ -532,7 +560,7 @@ export default function ShoppingListScreen() {
                 })}
                 <TouchableOpacity
                   style={[s.catChip, s.catChipNew, showCatInput && { borderColor: T.accent }]}
-                  onPress={() => { setShowCatInput(true); setTimeout(() => catInputRef.current?.focus(), 80); }}
+                  onPress={() => { Haptics.selectionAsync(); setShowCatInput(true); setTimeout(() => catInputRef.current?.focus(), 80); }}
                 >
                   <Ionicons name="add" size={13} color={showCatInput ? T.accent : T.textSub} />
                   <Text style={[s.catChipText, { marginLeft: 4 }, showCatInput && { color: T.accent }]}>New</Text>
@@ -560,12 +588,63 @@ export default function ShoppingListScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={s.newCatClose}
-                    onPress={() => { setShowCatInput(false); setNewCatName(''); }}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowCatInput(false); setNewCatName(''); }}
                   >
                     <Ionicons name="close" size={16} color={T.textSub} />
                   </TouchableOpacity>
                 </View>
               )}
+
+              {/* Reminder Date */}
+              <View style={{ marginBottom: 20 }}>
+                <Text style={s.label}>REMINDER (OPTIONAL)</Text>
+                {Platform.OS === 'ios' ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <DateTimePicker
+                      value={form.reminderDate ? new Date(form.reminderDate) : new Date()}
+                      mode="datetime"
+                      display="default"
+                      themeVariant={isDark ? 'dark' : 'light'}
+                      onChange={(e, date) => {
+                        if (date) setForm(p => ({ ...p, reminderDate: date.getTime() }));
+                      }}
+                      style={{ flex: 1, alignSelf: 'flex-start', marginLeft: -10 }}
+                    />
+                    {form.reminderDate && (
+                      <TouchableOpacity onPress={() => setForm(p => ({ ...p, reminderDate: null }))} style={{ padding: 8 }}>
+                        <Ionicons name="close-circle" size={20} color={T.textSub} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={[s.input, { justifyContent: 'center', marginBottom: 0 }]}
+                      onPress={() => setShowDatePicker(true)}
+                    >
+                      <Text style={{ color: form.reminderDate ? T.text : T.textSub, fontSize: 15 }}>
+                        {form.reminderDate ? new Date(form.reminderDate).toLocaleString() : 'Add a reminder date...'}
+                      </Text>
+                    </TouchableOpacity>
+                    {form.reminderDate && (
+                      <TouchableOpacity onPress={() => setForm(p => ({ ...p, reminderDate: null }))} style={{ position: 'absolute', right: 14, top: 32 }}>
+                        <Ionicons name="close-circle" size={20} color={T.textSub} />
+                      </TouchableOpacity>
+                    )}
+                    {showDatePicker && (
+                      <DateTimePicker
+                        value={form.reminderDate ? new Date(form.reminderDate) : new Date()}
+                        mode="date"
+                        display="default"
+                        onChange={(e, date) => {
+                          setShowDatePicker(false);
+                          if (e.type === 'set' && date) setForm(p => ({ ...p, reminderDate: date.getTime() }));
+                        }}
+                      />
+                    )}
+                  </>
+                )}
+              </View>
 
               {/* Total preview */}
               {previewTotal && (
@@ -586,7 +665,7 @@ export default function ShoppingListScreen() {
 
               {/* Action buttons */}
               <View style={s.sheetActions}>
-                <TouchableOpacity style={s.cancelBtn} onPress={closeSheet}>
+                <TouchableOpacity style={s.cancelBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); closeSheet(); }}>
                   <Text style={s.cancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity

@@ -9,7 +9,8 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.tobuyapp"
     },
     "android": {
       "adaptiveIcon": {
@@ -40,7 +41,23 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-widgets",
+        {
+          "widgets": [
+            {
+              "name": "TopExpensiveWidget",
+              "supportedFamilies": [
+                "systemMedium",
+                "systemLarge"
+              ],
+              "displayName": "Top 5 Expensive Items",
+              "description": "Shows the top 5 most expensive non-bought items."
+            }
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

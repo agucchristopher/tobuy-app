@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { CATEGORY_COLORS, CATEGORY_EMOJIS, ShoppingItem } from '@/constants/data';
 import { CURRENCIES, CurrencyCode, useTheme } from '@/context/ThemeContext';
 import Storage from '@/lib/secureStore';
+import * as Haptics from 'expo-haptics';
 
 export default function StatsScreen() {
     const T = useTheme();
@@ -72,7 +73,7 @@ export default function StatsScreen() {
                             <TouchableOpacity
                                 key={cur.code}
                                 style={[s.curRow, !isLast && s.curRowBorder, active && s.curRowActive]}
-                                onPress={() => T.setCurrency(cur.code as CurrencyCode)}
+                                onPress={() => { Haptics.selectionAsync(); T.setCurrency(cur.code as CurrencyCode); }}
                                 activeOpacity={0.65}
                             >
                                 {/* Flag + info */}

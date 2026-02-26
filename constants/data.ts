@@ -8,6 +8,7 @@ export interface ShoppingItem {
     category: string;
     bought: boolean;
     createdAt: number;
+    reminderDate?: number | null;
 }
 
 export const CATEGORIES = [
