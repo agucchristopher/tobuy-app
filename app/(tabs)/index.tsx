@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Dimensions,
-  FlatList,
   Keyboard,
   Modal,
   Platform,
@@ -14,7 +13,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -360,7 +359,7 @@ export default function ShoppingListScreen() {
           <TouchableOpacity
             style={[s.card, item.bought && { opacity: 0.55 }, isActive && { ...s.cardActive, borderColor: cc }]}
             onPress={() => toggleBought(item.id)}
-            onLongPress={drag}
+            onLongPress={filter === 'All' ? drag : undefined}
             activeOpacity={0.75}
           >
             {/* <ogbe /> */}
@@ -475,29 +474,14 @@ export default function ShoppingListScreen() {
         <View style={s.empty}>
           <Text style={s.emptySub}>Loading your list...</Text>
         </View>
-      ) : filter !== 'All' ? (
-        // When filtering, we don't allow sorting, because the list is just a subset.
-        <FlatList
-          data={filtered}
-          keyExtractor={i => i.id}
-          renderItem={({ item }) => renderItem({ item, drag: () => { }, isActive: false } as any)} // placeholder drag/isActive
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={s.listContent}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          ListEmptyComponent={
-            <View style={s.empty}>
-              <Text style={s.emptyEmoji}>🛍️</Text>
-              <Text style={s.emptyTitle}>Nothing here</Text>
-              <Text style={s.emptySub}>No items found in this section</Text>
-            </View>
-          }
-        />
       ) : (
         <DraggableFlatList
-          data={items}
+          data={filtered}
           onDragEnd={({ data }) => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setItems(data);
+            if (filter === 'All') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setItems(data);
+            }
           }}
           keyExtractor={i => i.id}
           renderItem={renderItem}
@@ -509,7 +493,9 @@ export default function ShoppingListScreen() {
             <View style={s.empty}>
               <Text style={s.emptyEmoji}>🛍️</Text>
               <Text style={s.emptyTitle}>Nothing here</Text>
-              <Text style={s.emptySub}>Tap + to add your first item</Text>
+              <Text style={s.emptySub}>
+                {filter === 'All' ? 'Tap + to add your first item' : 'No items found in this section'}
+              </Text>
             </View>
           }
         />
