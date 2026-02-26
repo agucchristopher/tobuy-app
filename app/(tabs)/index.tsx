@@ -28,7 +28,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   CATEGORIES,
@@ -39,6 +39,7 @@ import {
 } from '@/constants/data';
 import { useTheme } from '@/context/ThemeContext';
 import * as Haptics from 'expo-haptics';
+import QRCode from 'react-native-qrcode-svg';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -62,7 +63,6 @@ const BASE_FILTERS = ['All', 'Pending', 'Bought'] as const;
 export default function ShoppingListScreen() {
   const T = useTheme();
   const s = makeStyles(T);
-  const insets = useSafeAreaInsets();
   const isDark = T.mode === 'dark';
 
   // ── List state ────────────────────────────────────────────────────────────
@@ -70,6 +70,7 @@ export default function ShoppingListScreen() {
   const [cats, setCats] = useState<CategoryEntry[]>(DEFAULT_CATS);
   const [filter, setFilter] = useState('All');
   const [loading, setLoading] = useState(true);
+  const [showQR, setShowQR] = useState(false);
 
   // ── Persistence ───────────────────────────────────────────────────────────
   // Load data on mount
@@ -428,6 +429,11 @@ export default function ShoppingListScreen() {
         <BudgetStat label="Spent" value={fmtCompact(spentAmt)} color={T.green} T={T} />
         <View style={s.budgetDiv} />
         <BudgetStat label="Left" value={fmtCompact(leftAmt)} color={T.textSub} T={T} />
+        <View style={s.budgetDiv} />
+        <TouchableOpacity style={s.budgetStat} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowQR(true); }}>
+          <Ionicons name="qr-code-outline" size={20} color={T.text} style={{ marginBottom: 2 }} />
+          <Text style={s.budgetLabel}>Export</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Progress bar */}
@@ -527,7 +533,7 @@ export default function ShoppingListScreen() {
         </Animated.View>
 
         {/* Animated sheet */}
-        <Animated.View style={[s.sheetWrapper, sheetAnimStyle, { paddingBottom: 20, marginBottom: insets.bottom }]}>
+        <Animated.View style={[s.sheetWrapper, sheetAnimStyle, { paddingBottom: 20 }]}>
           {/* Intercept taps to prevent closing via backdrop */}
           <Pressable onPress={() => Keyboard.dismiss()}>
 
@@ -741,6 +747,27 @@ export default function ShoppingListScreen() {
         </Animated.View>
       </Modal>
 
+      {/* QR Code Export Modal */}
+      <Modal visible={showQR} transparent animationType="fade" onRequestClose={() => setShowQR(false)}>
+        <View style={s.qrBackdrop}>
+          <View style={s.qrContainer}>
+            <Text style={s.qrTitle}>Export Data</Text>
+            <Text style={s.qrSub}>Scan with another device to import</Text>
+            <View style={s.qrBox}>
+              <QRCode
+                value={JSON.stringify({ items, cats })}
+                size={220}
+                color={isDark ? '#FFF' : '#000'}
+                backgroundColor="transparent"
+              />
+            </View>
+            <TouchableOpacity style={s.qrCloseBtn} onPress={() => setShowQR(false)}>
+              <Text style={s.qrCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -897,6 +924,18 @@ function makeStyles(T: ReturnType<typeof useTheme>) {
 
     // Padding around the form fields
     sheetContent: { paddingHorizontal: 24, paddingTop: 4 },
+
+    // QR Code Modal
+    qrBackdrop: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.85)' : 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+    qrContainer: {
+      width: '100%', backgroundColor: T.surfaceHigh, borderRadius: 24, padding: 30, alignItems: 'center',
+      ...(isDark ? { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 12 } : { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 12 })
+    },
+    qrTitle: { fontSize: 22, fontWeight: '700', color: T.text, marginBottom: 8 },
+    qrSub: { fontSize: 14, color: T.textSub, marginBottom: 24, textAlign: 'center' },
+    qrBox: { padding: 20, backgroundColor: isDark ? '#FFFFFF10' : '#FFFFFF', borderRadius: 16, marginBottom: 28 },
+    qrCloseBtn: { backgroundColor: T.border, paddingVertical: 14, paddingHorizontal: 30, borderRadius: 16, width: '100%', alignItems: 'center' },
+    qrCloseText: { fontSize: 16, fontWeight: '600', color: T.text },
 
     sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 },
     sheetTitle: { fontSize: 20, fontWeight: '700', color: T.text, letterSpacing: -0.4 },
