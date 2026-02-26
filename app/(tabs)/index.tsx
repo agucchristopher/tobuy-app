@@ -1,6 +1,5 @@
 import Storage from '@/lib/secureStore';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -17,17 +16,20 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 import Animated, {
   Extrapolation,
   interpolate,
   runOnJS,
+  useAnimatedKeyboard,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   CATEGORIES,
@@ -61,6 +63,7 @@ const BASE_FILTERS = ['All', 'Pending', 'Bought'] as const;
 export default function ShoppingListScreen() {
   const T = useTheme();
   const s = makeStyles(T);
+  const insets = useSafeAreaInsets();
   const isDark = T.mode === 'dark';
 
   // ── List state ────────────────────────────────────────────────────────────
@@ -115,14 +118,19 @@ export default function ShoppingListScreen() {
   const [showCatInput, setShowCatInput] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const catInputRef = useRef<TextInput>(null);
+  const swipeableRefs = useRef(new Map<string, any>()).current;
 
   // ── Reanimated shared values ──────────────────────────────────────────────
   const translateY = useSharedValue(SCREEN_HEIGHT);
   const backdropOpacity = useSharedValue(0);
 
   // ── Animated styles ───────────────────────────────────────────────────────
+  const keyboard = useAnimatedKeyboard();
+
   const sheetAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
+    transform: [{
+      translateY: translateY.value - (Platform.OS === 'ios' ? keyboard.height.value : 0),
+    }],
   }));
 
   const backdropAnimStyle = useAnimatedStyle(() => ({
@@ -301,57 +309,95 @@ export default function ShoppingListScreen() {
     setItems(p => p.filter(i => i.id !== id));
   };
 
+  const confirmDeleteSwipe = (item: ShoppingItem) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    Alert.alert(
+      "Delete Item",
+      `Are you sure you want to delete "${item.name}"?`,
+      [
+        { text: "Cancel", style: "cancel", onPress: () => swipeableRefs.get(item.id)?.close() },
+        { text: "Delete", style: "destructive", onPress: () => deleteItem(item.id) }
+      ]
+    );
+  };
+
   const previewAmt = form.price ? parseFloat(form.price) * (parseInt(form.quantity) || 1) : null;
   const previewTotal = previewAmt != null ? fmt(previewAmt) : null;
   const activeCat = cats.find(c => c.name === form.category);
 
   // ── Render row ─────────────────────────────────────────────────────────────
-  const renderItem = ({ item }: { item: ShoppingItem }) => {
+  const renderItem = ({ item, drag, isActive }: RenderItemParams<ShoppingItem>) => {
     const cc = catColor(item.category);
     const tot = item.price * item.quantity;
     return (
-      <TouchableOpacity
-        style={[s.card, item.bought && { opacity: 0.55 }]}
-        onPress={() => toggleBought(item.id)}
-        onLongPress={() => openEdit(item)}
-        activeOpacity={0.75}
-      >
-        {/* <ogbe /> */}
-        <View style={[s.stripe, { backgroundColor: item.bought ? T.green : cc }]} />
-        <TouchableOpacity
-          style={[s.cb, item.bought && { backgroundColor: T.green, borderColor: T.green }]}
-          onPress={() => toggleBought(item.id)} hitSlop={8}
-        >
-          {item.bought && <Ionicons name="checkmark" size={13} color="#fff" />}
-        </TouchableOpacity>
-        <View style={s.cardBody}>
-          <Text style={[s.cardName, item.bought && s.cardNameDone]} numberOfLines={1}>
-            {item.name}
-          </Text>
-          <View style={s.cardMeta}>
-            <View style={[s.badge, { backgroundColor: cc + (isDark ? '28' : '18') }]}>
-              <Text style={[s.badgeText, { color: cc }]}>{catEmoji(item.category)}  {item.category}</Text>
+      <ScaleDecorator>
+        <Swipeable
+          ref={(ref) => {
+            if (ref) swipeableRefs.set(item.id, ref);
+            else swipeableRefs.delete(item.id);
+          }}
+          renderRightActions={() => (
+            <View style={s.deleteAction}>
+              <Ionicons name="trash-outline" size={26} color="#fff" />
             </View>
-            {item.quantity > 1 && (
-              <Text style={s.cardQty}>× {item.quantity}  ·  {fmt(item.price)} ea.</Text>
-            )}
-            {item.reminderDate && (
-              <View style={[s.badge, { backgroundColor: T.accent + '22' }]}>
-                <Ionicons name="alarm-outline" size={10} color={T.accent} style={{ marginRight: 2 }} />
-                <Text style={[s.badgeText, { color: T.accent }]}>
-                  {new Date(item.reminderDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                </Text>
+          )}
+          overshootRight={false}
+          overshootLeft={false}
+          renderLeftActions={() => (
+            <View style={s.editAction}>
+              <Ionicons name="pencil-outline" size={26} color="#fff" />
+            </View>
+          )}
+          onSwipeableOpen={(direction) => {
+            if (direction === 'right') {
+              confirmDeleteSwipe(item);
+            } else if (direction === 'left') {
+              swipeableRefs.get(item.id)?.close();
+              openEdit(item);
+            }
+          }}
+        >
+          <TouchableOpacity
+            style={[s.card, item.bought && { opacity: 0.55 }, isActive && { ...s.cardActive, borderColor: cc }]}
+            onPress={() => toggleBought(item.id)}
+            onLongPress={drag}
+            activeOpacity={0.75}
+          >
+            {/* <ogbe /> */}
+            <View style={[s.stripe, { backgroundColor: item.bought ? T.green : cc }]} />
+            <TouchableOpacity
+              style={[s.cb, item.bought && { backgroundColor: T.green, borderColor: T.green }]}
+              onPress={() => toggleBought(item.id)} hitSlop={8}
+            >
+              {item.bought && <Ionicons name="checkmark" size={13} color="#fff" />}
+            </TouchableOpacity>
+            <View style={s.cardBody}>
+              <Text style={[s.cardName, item.bought && s.cardNameDone]} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <View style={s.cardMeta}>
+                <View style={[s.badge, { backgroundColor: cc + (isDark ? '28' : '18') }]}>
+                  <Text style={[s.badgeText, { color: cc }]}>{catEmoji(item.category)}  {item.category}</Text>
+                </View>
+                {item.quantity > 1 && (
+                  <Text style={s.cardQty}>× {item.quantity}  ·  {fmt(item.price)} ea.</Text>
+                )}
+                {item.reminderDate && (
+                  <View style={[s.badge, { backgroundColor: T.accent + '22' }]}>
+                    <Ionicons name="alarm-outline" size={10} color={T.accent} style={{ marginRight: 2 }} />
+                    <Text style={[s.badgeText, { color: T.accent }]}>
+                      {new Date(item.reminderDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                )}
               </View>
-            )}
-          </View>
-        </View>
-        <View style={s.cardRight}>
-          <Text style={[s.cardPrice, item.bought && { color: T.green }]}>{fmt(tot)}</Text>
-          <TouchableOpacity onPress={() => deleteItem(item.id)} hitSlop={8} style={s.trashBtn}>
-            <Ionicons name="trash-outline" size={15} color={T.textSub} />
+            </View>
+            <View style={s.cardRight}>
+              <Text style={[s.cardPrice, item.bought && { color: T.green }]}>{fmt(tot)}</Text>
+            </View>
           </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
+        </Swipeable>
+      </ScaleDecorator>
     );
   };
 
@@ -429,13 +475,35 @@ export default function ShoppingListScreen() {
         <View style={s.empty}>
           <Text style={s.emptySub}>Loading your list...</Text>
         </View>
-      ) : (
+      ) : filter !== 'All' ? (
+        // When filtering, we don't allow sorting, because the list is just a subset.
         <FlatList
           data={filtered}
+          keyExtractor={i => i.id}
+          renderItem={({ item }) => renderItem({ item, drag: () => { }, isActive: false } as any)} // placeholder drag/isActive
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={s.listContent}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+          ListEmptyComponent={
+            <View style={s.empty}>
+              <Text style={s.emptyEmoji}>🛍️</Text>
+              <Text style={s.emptyTitle}>Nothing here</Text>
+              <Text style={s.emptySub}>No items found in this section</Text>
+            </View>
+          }
+        />
+      ) : (
+        <DraggableFlatList
+          data={items}
+          onDragEnd={({ data }) => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setItems(data);
+          }}
           keyExtractor={i => i.id}
           renderItem={renderItem}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={s.listContent}
+          containerStyle={{ flex: 1 }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           ListEmptyComponent={
             <View style={s.empty}>
@@ -473,7 +541,7 @@ export default function ShoppingListScreen() {
         </Animated.View>
 
         {/* Animated sheet */}
-        <Animated.View style={[s.sheetWrapper, sheetAnimStyle]}>
+        <Animated.View style={[s.sheetWrapper, sheetAnimStyle, { paddingBottom: 20, marginBottom: insets.bottom }]}>
           {/* Intercept taps to prevent closing via backdrop */}
           <Pressable onPress={() => Keyboard.dismiss()}>
 
@@ -596,7 +664,7 @@ export default function ShoppingListScreen() {
               )}
 
               {/* Reminder Date */}
-              <View style={{ marginBottom: 20 }}>
+              {/* <View style={{ marginBottom: 20 }}>
                 <Text style={s.label}>REMINDER (OPTIONAL)</Text>
                 {Platform.OS === 'ios' ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -631,7 +699,7 @@ export default function ShoppingListScreen() {
                         <Ionicons name="close-circle" size={20} color={T.textSub} />
                       </TouchableOpacity>
                     )}
-                    {showDatePicker && (
+                    {/* {showDatePicker && (
                       <DateTimePicker
                         value={form.reminderDate ? new Date(form.reminderDate) : new Date()}
                         mode="date"
@@ -641,10 +709,11 @@ export default function ShoppingListScreen() {
                           if (e.type === 'set' && date) setForm(p => ({ ...p, reminderDate: date.getTime() }));
                         }}
                       />
-                    )}
-                  </>
-                )}
-              </View>
+                    )} */}
+              {/* </>  */}
+              {/* )}  */}
+              {/* </View>  */}
+
 
               {/* Total preview */}
               {previewTotal && (
@@ -740,7 +809,7 @@ function makeStyles(T: ReturnType<typeof useTheme>) {
     progressFill: { height: '100%', backgroundColor: T.green, borderRadius: 3 },
 
     // Filter chips
-    filterScroll: { flexGrow: 0, marginBottom: 14 },
+    filterScroll: { flexGrow: 0, marginBottom: 16 },
     filterContent: { paddingHorizontal: 16, gap: 8, marginBottom: 2 },
     chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 24, borderWidth: 1.5, borderColor: T.border, backgroundColor: T.surface, minHeight: 42 },
     chipActive: { backgroundColor: isDark ? T.accent : T.text, borderColor: isDark ? T.accent : T.text },
@@ -759,6 +828,13 @@ function makeStyles(T: ReturnType<typeof useTheme>) {
       overflow: 'hidden', minHeight: 72,
       ...(isDark ? { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 4 } : {}),
     },
+    cardActive: {
+      transform: [{ scale: 1.02 }],
+      shadowOpacity: 0.4,
+      shadowRadius: 10,
+      elevation: 10,
+      backgroundColor: isDark ? T.surfaceHigh : '#fff',
+    },
     stripe: { width: 4, alignSelf: 'stretch' },
     cb: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: isDark ? '#FFFFFF18' : T.border, justifyContent: 'center', alignItems: 'center', marginLeft: 12, backgroundColor: isDark ? '#FFFFFF08' : T.surfaceHigh },
     cardBody: { flex: 1, paddingHorizontal: 12, paddingVertical: 14 },
@@ -769,6 +845,12 @@ function makeStyles(T: ReturnType<typeof useTheme>) {
     cardRight: { alignItems: 'flex-end', paddingRight: 14, gap: 6, minWidth: 68 },
     cardPrice: { fontSize: 16, fontWeight: '700', color: T.text, letterSpacing: -0.3 },
     trashBtn: { padding: 4 },
+    deleteAction: {
+      flex: 1, backgroundColor: T.red, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 24, borderRadius: 14
+    },
+    editAction: {
+      flex: 1, backgroundColor: T.accent, justifyContent: 'center', alignItems: 'flex-start', paddingLeft: 24, borderRadius: 14
+    },
     badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
     badgeText: { fontSize: 11, fontWeight: '600' },
 

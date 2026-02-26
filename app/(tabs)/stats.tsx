@@ -103,11 +103,11 @@ export default function StatsScreen() {
                 <Text style={s.sectionLabel}>OVERVIEW</Text>
                 <View style={s.card}>
                     <View style={s.overviewRow}>
-                        <OverviewStat label="Budget" value={fmt(total)} color={T.accent} s={s} />
+                        <OverviewStat label="Budget" amount={total} color={T.accent} T={T} s={s} />
                         <View style={s.overviewDiv} />
-                        <OverviewStat label="Spent" value={fmt(spent)} color={T.green} s={s} />
+                        <OverviewStat label="Spent" amount={spent} color={T.green} T={T} s={s} />
                         <View style={s.overviewDiv} />
-                        <OverviewStat label="Remaining" value={fmt(left)} color={T.textSub} s={s} />
+                        <OverviewStat label="Remaining" amount={left} color={T.textSub} T={T} s={s} />
                     </View>
 
                     {/* Progress */}
@@ -173,10 +173,13 @@ export default function StatsScreen() {
 }
 
 // ─── Overview stat cell ───────────────────────────────────────────────────────
-function OverviewStat({ label, value, color, s }: { label: string; value: string; color: string; s: ReturnType<typeof makeStyles> }) {
+function OverviewStat({ label, amount, color, T, s }: { label: string; amount: number; color: string; T: ReturnType<typeof useTheme>; s: ReturnType<typeof makeStyles> }) {
+    const isMillion = Math.abs(amount) >= 1_000_000;
+    const valueStr = isMillion ? ` ${T.formatCompact(amount)}` : T.formatPrice(amount);
+
     return (
         <View style={s.overviewStat}>
-            <Text style={[s.overviewVal, { color }]}>{value}</Text>
+            <Text style={[s.overviewVal, { color }]} adjustsFontSizeToFit numberOfLines={1}>{valueStr}</Text>
             <Text style={s.overviewLabel}>{label}</Text>
         </View>
     );
@@ -209,8 +212,8 @@ function makeStyles(T: ReturnType<typeof useTheme>) {
 
         // ── Overview ─────────────────────────────────────────────────────────────
         overviewRow: { flexDirection: 'row', paddingVertical: 20 },
-        overviewStat: { flex: 1, alignItems: 'center' },
-        overviewVal: { fontSize: 17, fontWeight: '700', marginBottom: 4 },
+        overviewStat: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
+        overviewVal: { fontSize: 17, fontWeight: '700', marginBottom: 4, width: '100%', textAlign: 'center' },
         overviewLabel: { fontSize: 12, color: T.textSub, fontWeight: '500' },
         overviewDiv: { width: 1, backgroundColor: T.border },
 
