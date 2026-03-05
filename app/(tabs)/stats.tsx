@@ -1,16 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useFocusEffect } from 'expo-router';
+import LZString from 'lz-string';
 import React, { useCallback, useState } from 'react';
 import {
+    Alert,
+    Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { CATEGORY_COLORS, CATEGORY_EMOJIS, ShoppingItem } from '@/constants/data';
+import { CATEGORIES, CATEGORY_COLORS, CATEGORY_EMOJIS, ShoppingItem } from '@/constants/data';
 import { CURRENCIES, CurrencyCode, useTheme } from '@/context/ThemeContext';
 import Storage from '@/lib/secureStore';
 import * as Haptics from 'expo-haptics';
@@ -21,13 +27,25 @@ export default function StatsScreen() {
     const fmt = T.formatPrice;
 
     const [items, setItems] = useState<ShoppingItem[]>([]);
+    const [cats, setCats] = useState<{ name: string, color: string, emoji: string }[]>((CATEGORIES as readonly string[]).map(name => ({
+        name,
+        color: CATEGORY_COLORS[name] ?? '#8E8E93',
+        emoji: CATEGORY_EMOJIS[name] ?? '📦',
+    })));
+    const [showQR, setShowQR] = useState(false);
+    const [showScanner, setShowScanner] = useState(false);
+    const [permission, requestPermission] = useCameraPermissions();
 
     useFocusEffect(
         useCallback(() => {
             const loadData = async () => {
                 try {
-                    const savedItems = await Storage.getItem('tobuy_items');
+                    const [savedItems, savedCats] = await Promise.all([
+                        Storage.getItem('tobuy_items'),
+                        Storage.getItem('tobuy_categories'),
+                    ]);
                     if (savedItems) setItems(JSON.parse(savedItems));
+                    if (savedCats) setCats(JSON.parse(savedCats));
                 } catch (e) {
                     console.error('Failed to load items in stats', e);
                 }
@@ -35,6 +53,63 @@ export default function StatsScreen() {
             loadData();
         }, [])
     );
+
+    const startImport = async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (!permission?.granted) {
+            const result = await requestPermission();
+            if (!result.granted) {
+                Alert.alert("Permission Required", "Camera access is needed to scan QR codes.");
+                return;
+            }
+        }
+        setShowScanner(true);
+    };
+
+    const handleScan = async ({ data }: { data: string }) => {
+        try {
+            const parsed = JSON.parse(LZString.decompressFromEncodedURIComponent(data) || '');
+            if (parsed.i && parsed.c) {
+                const decodedItems = parsed.i.map((x: any) => ({ id: x.i, name: x.n, price: x.p, quantity: x.q, category: x.c, bought: x.b, createdAt: x.a, reminderDate: x.r }));
+                const decodedCats = parsed.c.map((x: any) => ({ name: x.n, color: x.c, emoji: x.e }));
+
+                setShowScanner(false); // Pause scanner UI on success match logic
+                Alert.alert(
+                    "Import Data",
+                    `Found ${decodedItems.length} items and ${decodedCats.length} categories. Merge with your current list or replace entirely?`,
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                            text: "Replace", onPress: async () => {
+                                await Storage.setItem('tobuy_items', JSON.stringify(decodedItems));
+                                await Storage.setItem('tobuy_categories', JSON.stringify(decodedCats));
+                                setItems(decodedItems); setCats(decodedCats);
+                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            }
+                        },
+                        {
+                            text: "Merge", onPress: async () => {
+                                const newIds = new Set(decodedItems.map((i: any) => i.id));
+                                const mergedItems = [...items.filter((i: any) => !newIds.has(i.id)), ...decodedItems];
+                                const newCatNames = new Set(decodedCats.map((c: any) => c.name));
+                                const mergedCats = [...cats.filter((c: any) => !newCatNames.has(c.name)), ...decodedCats];
+                                await Storage.setItem('tobuy_items', JSON.stringify(mergedItems));
+                                await Storage.setItem('tobuy_categories', JSON.stringify(mergedCats));
+                                setItems(mergedItems); setCats(mergedCats);
+                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            }
+                        }
+                    ]
+                );
+            } else {
+                throw new Error("Invalid format");
+            }
+        } catch (e) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            Alert.alert("Invalid QR Code", "The scanned QR code is either invalid or could not be read.");
+            setShowScanner(false);
+        }
+    };
 
     const total = items.reduce((a, i) => a + i.price * i.quantity, 0);
     const spent = items.filter(i => i.bought).reduce((a, i) => a + i.price * i.quantity, 0);
@@ -50,8 +125,8 @@ export default function StatsScreen() {
         catMap[item.category].count++;
         if (item.bought) catMap[item.category].spent += item.price * item.quantity;
     }
-    const cats = Object.entries(catMap).sort((a, b) => b[1].total - a[1].total);
-    const maxCat = Math.max(...cats.map(([, v]) => v.total), 1);
+    const catBreakdown = Object.entries(catMap).sort((a, b) => b[1].total - a[1].total);
+    const maxCat = Math.max(...catBreakdown.map(([, v]) => v.total), 1);
 
     return (
         <SafeAreaView style={s.root}>
@@ -125,11 +200,11 @@ export default function StatsScreen() {
                 {/* ── Categories ──────────────────────────────────────────────────── */}
                 <Text style={s.sectionLabel}>BY CATEGORY</Text>
                 <View style={s.card}>
-                    {cats.map(([cat, data], idx) => {
+                    {catBreakdown.map(([cat, data], idx) => {
                         const cc = CATEGORY_COLORS[cat] ?? '#5856D6';
                         const barW = data.total / maxCat;
                         const catPct = data.total > 0 ? data.spent / data.total : 0;
-                        const isLast = idx === cats.length - 1;
+                        const isLast = idx === catBreakdown.length - 1;
 
                         return (
                             <View key={cat} style={[s.catRow, !isLast && s.catRowBorder]}>
@@ -167,7 +242,70 @@ export default function StatsScreen() {
                     ))}
                 </View>
 
+                {/* ── Data Management ──────────────────────────────────────────────────────── */}
+                <Text style={s.sectionLabel}>DATA MANAGEMENT</Text>
+                <View style={s.card}>
+                    <TouchableOpacity style={[s.tipRow, s.catRowBorder]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowQR(true); }}>
+                        <Ionicons name="qr-code-outline" size={18} color={T.accent} style={{ marginRight: 12 }} />
+                        <Text style={s.tipText}>Export Data</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.tipRow} onPress={startImport}>
+                        <Ionicons name="scan-outline" size={18} color={T.green} style={{ marginRight: 12 }} />
+                        <Text style={s.tipText}>Import Data</Text>
+                    </TouchableOpacity>
+                </View>
+
             </ScrollView>
+
+            {/* QR Code Export Modal */}
+            <Modal visible={showQR} transparent animationType="fade" onRequestClose={() => setShowQR(false)}>
+                <View style={s.qrBackdrop}>
+                    <View style={s.qrContainer}>
+                        <Text style={s.qrTitle}>Export Data</Text>
+                        <Text style={s.qrSub}>Scan with another device to import</Text>
+                        <View style={s.qrBox}>
+                            <QRCode
+                                value={LZString.compressToEncodedURIComponent(JSON.stringify({
+                                    i: items.map(x => ({ i: x.id, n: x.name, p: x.price, q: x.quantity, c: x.category, b: x.bought, a: x.createdAt, r: x.reminderDate })),
+                                    c: cats.map(x => ({ n: x.name, c: x.color, e: x.emoji }))
+                                }))}
+                                size={220}
+                                color={T.mode === 'dark' ? '#FFF' : '#000'}
+                                backgroundColor="transparent"
+                            />
+                        </View>
+                        <TouchableOpacity style={s.qrCloseBtn} onPress={() => setShowQR(false)}>
+                            <Text style={s.qrCloseText}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Camera Scanner Modal */}
+            <Modal visible={showScanner} transparent animationType="slide" onRequestClose={() => setShowScanner(false)}>
+                <View style={s.scannerWrap}>
+                    <View style={s.scannerHeader}>
+                        <Text style={s.scannerTitle}>Scan QR Code</Text>
+                        <TouchableOpacity onPress={() => setShowScanner(false)} style={s.iconBtn}>
+                            <Ionicons name="close" size={20} color={T.text} />
+                        </TouchableOpacity>
+                    </View>
+                    <View style={s.scannerBody}>
+                        {showScanner && permission?.granted && (
+                            <CameraView
+                                style={StyleSheet.absoluteFillObject}
+                                facing="back"
+                                onBarcodeScanned={handleScan}
+                                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                            />
+                        )}
+                        <View style={s.scannerOverlay}>
+                            <View style={s.scannerTarget} />
+                            <Text style={s.scannerHint}>Align a ToBuy QR code within the frame</Text>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -241,5 +379,25 @@ function makeStyles(T: ReturnType<typeof useTheme>) {
         // ── Tips ─────────────────────────────────────────────────────────────────
         tipRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
         tipText: { flex: 1, fontSize: 14, color: T.text, lineHeight: 20 },
+
+        iconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, justifyContent: 'center', alignItems: 'center' },
+
+        // QR Code Modal
+        qrBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+        qrContainer: { width: '100%', maxWidth: 360, backgroundColor: T.bg, borderRadius: 24, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: T.border },
+        qrTitle: { fontSize: 22, fontWeight: '700', color: T.text, marginBottom: 8, letterSpacing: -0.4 },
+        qrSub: { fontSize: 13, color: T.textSub, marginBottom: 24, textAlign: 'center' },
+        qrBox: { padding: 20, backgroundColor: T.mode === 'dark' ? '#FFFFFF10' : '#fff', borderRadius: 20, marginBottom: 24, borderWidth: 1, borderColor: T.border, overflow: 'hidden' },
+        qrCloseBtn: { width: '100%', paddingVertical: 14, borderRadius: 14, backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, alignItems: 'center' },
+        qrCloseText: { fontSize: 15, fontWeight: '700', color: T.text },
+
+        // Scanner
+        scannerWrap: { flex: 1, backgroundColor: T.bg },
+        scannerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40, backgroundColor: T.surface, borderBottomWidth: 1, borderColor: T.border },
+        scannerTitle: { fontSize: 20, fontWeight: '700', color: T.text, letterSpacing: -0.4 },
+        scannerBody: { flex: 1, backgroundColor: '#000' },
+        scannerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
+        scannerTarget: { width: 250, height: 250, borderWidth: 2, borderColor: T.accent, borderRadius: 24, backgroundColor: 'transparent' },
+        scannerHint: { fontSize: 14, color: '#fff', fontWeight: '600', marginTop: 30, letterSpacing: 0.5, textAlign: 'center', paddingHorizontal: 40 },
     });
 }

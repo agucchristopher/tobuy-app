@@ -1,5 +1,6 @@
 import Storage from '@/lib/secureStore';
 import { Ionicons } from '@expo/vector-icons';
+import { FlashList, ListRenderItemInfo } from '@shopify/flash-list';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -15,7 +16,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import Animated, {
@@ -39,7 +39,7 @@ import {
 } from '@/constants/data';
 import { useTheme } from '@/context/ThemeContext';
 import * as Haptics from 'expo-haptics';
-import QRCode from 'react-native-qrcode-svg';
+import { useFocusEffect } from 'expo-router';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -70,31 +70,32 @@ export default function ShoppingListScreen() {
   const [cats, setCats] = useState<CategoryEntry[]>(DEFAULT_CATS);
   const [filter, setFilter] = useState('All');
   const [loading, setLoading] = useState(true);
-  const [showQR, setShowQR] = useState(false);
 
   // ── Persistence ───────────────────────────────────────────────────────────
   // Load data on mount
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [savedItems, savedCats] = await Promise.all([
-          Storage.getItem('tobuy_items'),
-          Storage.getItem('tobuy_categories'),
-        ]);
+  useFocusEffect(
+    useCallback(() => {
+      const loadData = async () => {
+        try {
+          const [savedItems, savedCats] = await Promise.all([
+            Storage.getItem('tobuy_items'),
+            Storage.getItem('tobuy_categories'),
+          ]);
 
-        if (savedItems) setItems(JSON.parse(savedItems));
-        else setItems([]); // Fallback to empty if empty
+          if (savedItems) setItems(JSON.parse(savedItems));
+          else setItems([]); // Fallback to empty if empty
 
-        if (savedCats) setCats(JSON.parse(savedCats));
-      } catch (e) {
-        console.error('Failed to load data', e);
-        setItems([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+          if (savedCats) setCats(JSON.parse(savedCats));
+        } catch (e) {
+          console.error('Failed to load data', e);
+          setItems([]);
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadData();
+    }, [])
+  );
 
   // Save items when they change
   useEffect(() => {
@@ -117,7 +118,11 @@ export default function ShoppingListScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCatInput, setShowCatInput] = useState(false);
   const [newCatName, setNewCatName] = useState('');
+  const [newCatEmoji, setNewCatEmoji] = useState('🏷️');
+  const [newCatColor, setNewCatColor] = useState(NEW_CATEGORY_PALETTE[0]);
+  const [editingCatName, setEditingCatName] = useState<string | null>(null);
   const catInputRef = useRef<TextInput>(null);
+
   const swipeableRefs = useRef(new Map<string, any>()).current;
 
   // ── Reanimated shared values ──────────────────────────────────────────────
@@ -222,14 +227,14 @@ export default function ShoppingListScreen() {
   const openAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setForm({ name: '', price: '', quantity: '1', category: cats[0]?.name ?? '', reminderDate: null });
-    setEditingId(null); setShowCatInput(false); setNewCatName('');
+    setEditingId(null); setShowCatInput(false); setEditingCatName(null); setNewCatName(''); setNewCatEmoji('🏷️'); setNewCatColor(NEW_CATEGORY_PALETTE[0]);
     openSheet();
   };
 
   const openEdit = (item: ShoppingItem) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setForm({ name: item.name, price: String(item.price), quantity: String(item.quantity), category: item.category, reminderDate: item.reminderDate ?? null });
-    setEditingId(item.id); setShowCatInput(false); setNewCatName('');
+    setEditingId(item.id); setShowCatInput(false); setEditingCatName(null); setNewCatName(''); setNewCatEmoji('🏷️'); setNewCatColor(NEW_CATEGORY_PALETTE[0]);
     openSheet();
   };
 
@@ -256,15 +261,38 @@ export default function ShoppingListScreen() {
 
   const confirmAddCategory = () => {
     const trimmed = newCatName.trim();
-    if (!trimmed || cats.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
+    if (!trimmed) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      setShowCatInput(false); setNewCatName(''); return;
+      setShowCatInput(false); setNewCatName(''); setNewCatEmoji('🏷️'); setNewCatColor(NEW_CATEGORY_PALETTE[0]); setEditingCatName(null); return;
     }
-    const color = NEW_CATEGORY_PALETTE[cats.length % NEW_CATEGORY_PALETTE.length];
-    setCats(p => [...p, { name: trimmed, color, emoji: '🏷️' }]);
-    setForm(f => ({ ...f, category: trimmed }));
-    setShowCatInput(false); setNewCatName('');
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    if (editingCatName) {
+      if (trimmed.toLowerCase() !== editingCatName.toLowerCase() && cats.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert("Error", "A category with this name already exists.");
+        return;
+      }
+      setCats(p => p.map(c => c.name === editingCatName ? { ...c, name: trimmed, color: newCatColor, emoji: newCatEmoji || '🏷️' } : c));
+
+      if (trimmed !== editingCatName) {
+        setItems(p => p.map(i => i.category === editingCatName ? { ...i, category: trimmed } : i));
+        if (filter === editingCatName) setFilter(trimmed);
+        if (form.category === editingCatName) setForm(f => ({ ...f, category: trimmed }));
+      } else {
+        if (form.category === editingCatName) setForm(f => ({ ...f, category: trimmed }));
+      }
+      setShowCatInput(false); setNewCatName(''); setNewCatEmoji('🏷️'); setNewCatColor(NEW_CATEGORY_PALETTE[0]); setEditingCatName(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      if (cats.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        setShowCatInput(false); setNewCatName(''); setNewCatEmoji('🏷️'); setNewCatColor(NEW_CATEGORY_PALETTE[0]); return;
+      }
+      setCats(p => [...p, { name: trimmed, color: newCatColor, emoji: newCatEmoji || '🏷️' }]);
+      setForm(f => ({ ...f, category: trimmed }));
+      setShowCatInput(false); setNewCatName(''); setNewCatEmoji('🏷️'); setNewCatColor(NEW_CATEGORY_PALETTE[0]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
   };
 
   const handleLongPressCategory = (catName: string) => {
@@ -277,6 +305,22 @@ export default function ShoppingListScreen() {
       `What would you like to do with "${catName}"?`,
       [
         { text: "Cancel", style: "cancel" },
+        {
+          text: "Edit",
+          onPress: () => {
+            const cat = cats.find(c => c.name === catName);
+            if (cat) {
+              setEditingCatName(cat.name);
+              setNewCatName(cat.name);
+              setNewCatEmoji(cat.emoji);
+              setNewCatColor(cat.color);
+              setShowCatInput(true);
+              if (!modalMounted) {
+                openSheet();
+              }
+            }
+          }
+        },
         {
           text: "Delete",
           style: "destructive",
@@ -326,84 +370,81 @@ export default function ShoppingListScreen() {
   const activeCat = cats.find(c => c.name === form.category);
 
   // ── Render row ─────────────────────────────────────────────────────────────
-  const renderItem = ({ item, drag, isActive }: RenderItemParams<ShoppingItem>) => {
+  const renderItem = ({ item }: ListRenderItemInfo<ShoppingItem>) => {
     const cc = catColor(item.category);
     const tot = item.price * item.quantity;
     return (
-      <ScaleDecorator>
-        <Swipeable
-          ref={(ref) => {
-            if (ref) swipeableRefs.set(item.id, ref);
-            else swipeableRefs.delete(item.id);
-          }}
-          renderRightActions={() => (
-            <View style={s.deleteAction}>
-              <Ionicons name="trash-outline" size={26} color="#fff" />
-            </View>
-          )}
-          overshootRight={false}
-          overshootLeft={false}
-          renderLeftActions={() => (
-            <View style={s.editAction}>
-              <Ionicons name="pencil-outline" size={26} color="#fff" />
-            </View>
-          )}
-          onSwipeableOpen={(direction) => {
-            if (direction === 'right') {
-              confirmDeleteSwipe(item);
-            } else if (direction === 'left') {
-              swipeableRefs.get(item.id)?.close();
-              openEdit(item);
-            }
-          }}
+      <Swipeable
+        ref={(ref) => {
+          if (ref) swipeableRefs.set(item.id, ref);
+          else swipeableRefs.delete(item.id);
+        }}
+        renderRightActions={() => (
+          <View style={s.deleteAction}>
+            <Ionicons name="trash-outline" size={26} color="#fff" />
+          </View>
+        )}
+        overshootRight={false}
+        overshootLeft={false}
+        renderLeftActions={() => (
+          <View style={s.editAction}>
+            <Ionicons name="pencil-outline" size={26} color="#fff" />
+          </View>
+        )}
+        onSwipeableOpen={(direction) => {
+          if (direction === 'right') {
+            confirmDeleteSwipe(item);
+          } else if (direction === 'left') {
+            swipeableRefs.get(item.id)?.close();
+            openEdit(item);
+          }
+        }}
+      >
+        <TouchableOpacity
+          style={[s.card, item.bought && { opacity: 0.55 }]}
+          onPress={() => toggleBought(item.id)}
+          activeOpacity={0.75}
         >
+          {/* <ogbe /> */}
+          <View style={[s.stripe, { backgroundColor: item.bought ? T.green : cc }]} />
           <TouchableOpacity
-            style={[s.card, item.bought && { opacity: 0.55 }, isActive && { ...s.cardActive, borderColor: cc }]}
-            onPress={() => toggleBought(item.id)}
-            onLongPress={filter === 'All' ? drag : undefined}
-            activeOpacity={0.75}
+            style={[s.cb, item.bought && { backgroundColor: T.green, borderColor: T.green }]}
+            onPress={() => toggleBought(item.id)} hitSlop={8}
           >
-            {/* <ogbe /> */}
-            <View style={[s.stripe, { backgroundColor: item.bought ? T.green : cc }]} />
-            <TouchableOpacity
-              style={[s.cb, item.bought && { backgroundColor: T.green, borderColor: T.green }]}
-              onPress={() => toggleBought(item.id)} hitSlop={8}
-            >
-              {item.bought && <Ionicons name="checkmark" size={13} color="#fff" />}
-            </TouchableOpacity>
-            <View style={s.cardBody}>
-              <Text style={[s.cardName, item.bought && s.cardNameDone]} numberOfLines={1}>
-                {item.name}
-              </Text>
-              <View style={s.cardMeta}>
-                <View style={[s.badge, { backgroundColor: cc + (isDark ? '28' : '18') }]}>
-                  <Text style={[s.badgeText, { color: cc }]}>{catEmoji(item.category)}  {item.category}</Text>
-                </View>
-                {item.quantity > 1 && (
-                  <Text style={s.cardQty}>× {item.quantity}  ·  {fmt(item.price)} ea.</Text>
-                )}
-                {item.reminderDate && (
-                  <View style={[s.badge, { backgroundColor: T.accent + '22' }]}>
-                    <Ionicons name="alarm-outline" size={10} color={T.accent} style={{ marginRight: 2 }} />
-                    <Text style={[s.badgeText, { color: T.accent }]}>
-                      {new Date(item.reminderDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-            <View style={s.cardRight}>
-              <Text style={[s.cardPrice, item.bought && { color: T.green }]}>{fmt(tot)}</Text>
-            </View>
+            {item.bought && <Ionicons name="checkmark" size={13} color="#fff" />}
           </TouchableOpacity>
-        </Swipeable>
-      </ScaleDecorator>
+          <View style={s.cardBody}>
+            <Text style={[s.cardName, item.bought && s.cardNameDone]} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <View style={s.cardMeta}>
+              <View style={[s.badge, { backgroundColor: cc + (isDark ? '28' : '18') }]}>
+                <Text style={[s.badgeText, { color: cc }]}>{catEmoji(item.category)}  {item.category}</Text>
+              </View>
+              {item.quantity > 1 && (
+                <Text style={s.cardQty}>× {item.quantity}  ·  {fmt(item.price)} ea.</Text>
+              )}
+              {item.reminderDate && (
+                <View style={[s.badge, { backgroundColor: T.accent + '22' }]}>
+                  <Ionicons name="alarm-outline" size={10} color={T.accent} style={{ marginRight: 2 }} />
+                  <Text style={[s.badgeText, { color: T.accent }]}>
+                    {new Date(item.reminderDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+          <View style={s.cardRight}>
+            <Text style={[s.cardPrice, item.bought && { color: T.green }]}>{fmt(tot)}</Text>
+          </View>
+        </TouchableOpacity>
+      </Swipeable>
     );
   };
 
   // ── UI ─────────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={s.root}>
+    <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
 
       {/* Header */}
       <View style={s.header}>
@@ -429,11 +470,6 @@ export default function ShoppingListScreen() {
         <BudgetStat label="Spent" value={fmtCompact(spentAmt)} color={T.green} T={T} />
         <View style={s.budgetDiv} />
         <BudgetStat label="Left" value={fmtCompact(leftAmt)} color={T.textSub} T={T} />
-        <View style={s.budgetDiv} />
-        <TouchableOpacity style={s.budgetStat} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowQR(true); }}>
-          <Ionicons name="qr-code-outline" size={20} color={T.text} style={{ marginBottom: 2 }} />
-          <Text style={s.budgetLabel}>Export</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Progress bar */}
@@ -481,30 +517,26 @@ export default function ShoppingListScreen() {
           <Text style={s.emptySub}>Loading your list...</Text>
         </View>
       ) : (
-        <DraggableFlatList
-          data={filtered}
-          onDragEnd={({ data }) => {
-            if (filter === 'All') {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setItems(data);
+        <View style={{ flex: 1 }}>
+          <FlashList
+            data={filtered}
+            keyExtractor={(i: ShoppingItem) => i.id}
+            renderItem={renderItem}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={s.listContent}
+            estimatedItemSize={72}
+            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+            ListEmptyComponent={
+              <View style={s.empty}>
+                <Text style={s.emptyEmoji}>🛍️</Text>
+                <Text style={s.emptyTitle}>Nothing here</Text>
+                <Text style={s.emptySub}>
+                  {filter === 'All' ? 'Tap + to add your first item' : 'No items found in this section'}
+                </Text>
+              </View>
             }
-          }}
-          keyExtractor={i => i.id}
-          renderItem={renderItem}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={s.listContent}
-          containerStyle={{ flex: 1 }}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          ListEmptyComponent={
-            <View style={s.empty}>
-              <Text style={s.emptyEmoji}>🛍️</Text>
-              <Text style={s.emptyTitle}>Nothing here</Text>
-              <Text style={s.emptySub}>
-                {filter === 'All' ? 'Tap + to add your first item' : 'No items found in this section'}
-              </Text>
-            </View>
-          }
-        />
+          />
+        </View>
       )}
 
       {/* FAB */}
@@ -629,29 +661,48 @@ export default function ShoppingListScreen() {
 
               {/* Inline new category input */}
               {showCatInput && (
-                <View style={s.newCatRow}>
-                  <TextInput
-                    ref={catInputRef}
-                    style={s.newCatInput}
-                    placeholder="Category name…"
-                    placeholderTextColor={T.textSub}
-                    value={newCatName}
-                    onChangeText={setNewCatName}
-                    onSubmitEditing={confirmAddCategory}
-                    returnKeyType="done"
-                  />
-                  <TouchableOpacity
-                    style={[s.newCatOk, { backgroundColor: newCatName.trim() ? T.accent : T.border }]}
-                    onPress={confirmAddCategory}
-                  >
-                    <Ionicons name="checkmark" size={16} color="#fff" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={s.newCatClose}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowCatInput(false); setNewCatName(''); }}
-                  >
-                    <Ionicons name="close" size={16} color={T.textSub} />
-                  </TouchableOpacity>
+                <View style={s.newCatContainer}>
+                  <View style={s.newCatRow}>
+                    <TextInput
+                      style={[s.newCatInput, { width: 44, textAlign: 'center', flex: undefined, paddingHorizontal: 0 }]}
+                      placeholder="🏷️"
+                      placeholderTextColor={T.textSub}
+                      value={newCatEmoji}
+                      onChangeText={setNewCatEmoji}
+                      maxLength={2}
+                    />
+                    <TextInput
+                      ref={catInputRef}
+                      style={s.newCatInput}
+                      placeholder="Category name…"
+                      placeholderTextColor={T.textSub}
+                      value={newCatName}
+                      onChangeText={setNewCatName}
+                      onSubmitEditing={confirmAddCategory}
+                      returnKeyType="done"
+                    />
+                    <TouchableOpacity
+                      style={[s.newCatOk, { backgroundColor: newCatName.trim() ? newCatColor : T.border }]}
+                      onPress={confirmAddCategory}
+                    >
+                      <Ionicons name="checkmark" size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.newCatClose}
+                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowCatInput(false); setEditingCatName(null); setNewCatName(''); setNewCatEmoji('🏷️'); setNewCatColor(NEW_CATEGORY_PALETTE[0]); }}
+                    >
+                      <Ionicons name="close" size={16} color={T.textSub} />
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.colorScroll}>
+                    {NEW_CATEGORY_PALETTE.map(color => (
+                      <TouchableOpacity
+                        key={color}
+                        style={[s.colorCircle, { backgroundColor: color }, newCatColor === color && s.colorCircleActive]}
+                        onPress={() => { Haptics.selectionAsync(); setNewCatColor(color); }}
+                      />
+                    ))}
+                  </ScrollView>
                 </View>
               )}
 
@@ -747,27 +798,6 @@ export default function ShoppingListScreen() {
         </Animated.View>
       </Modal>
 
-      {/* QR Code Export Modal */}
-      <Modal visible={showQR} transparent animationType="fade" onRequestClose={() => setShowQR(false)}>
-        <View style={s.qrBackdrop}>
-          <View style={s.qrContainer}>
-            <Text style={s.qrTitle}>Export Data</Text>
-            <Text style={s.qrSub}>Scan with another device to import</Text>
-            <View style={s.qrBox}>
-              <QRCode
-                value={JSON.stringify({ items, cats })}
-                size={220}
-                color={isDark ? '#FFF' : '#000'}
-                backgroundColor="transparent"
-              />
-            </View>
-            <TouchableOpacity style={s.qrCloseBtn} onPress={() => setShowQR(false)}>
-              <Text style={s.qrCloseText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
     </SafeAreaView>
   );
 }
@@ -831,7 +861,7 @@ function makeStyles(T: ReturnType<typeof useTheme>) {
     chipTextActive: { color: '#fff' },
 
     // List
-    listContent: { paddingHorizontal: 16, paddingBottom: 120 },
+    listContent: { paddingHorizontal: 16, paddingBottom: 90 },
 
     // Item card
     card: {
@@ -950,10 +980,15 @@ function makeStyles(T: ReturnType<typeof useTheme>) {
     catChipNew: { borderStyle: 'dashed' },
     catChipText: { fontSize: 13, fontWeight: '600', color: T.textSub },
 
-    newCatRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
+    newCatContainer: { marginBottom: 20 },
+    newCatRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     newCatInput: { flex: 1, backgroundColor: isDark ? '#FFFFFF07' : T.surface, borderRadius: 10, borderWidth: 1.5, borderColor: T.accent, color: T.text, fontSize: 14, fontWeight: '500', paddingHorizontal: 12, paddingVertical: 10 },
     newCatOk: { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
     newCatClose: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: T.border, backgroundColor: isDark ? '#FFFFFF07' : T.surface, justifyContent: 'center', alignItems: 'center' },
+
+    colorScroll: { marginTop: 12 },
+    colorCircle: { width: 32, height: 32, borderRadius: 16, marginRight: 12, borderWidth: 2, borderColor: 'transparent' },
+    colorCircleActive: { borderColor: T.text, transform: [{ scale: 1.1 }] },
 
     preview: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isDark ? '#FFFFFF05' : T.surface, borderRadius: 12, borderWidth: 1.5, borderColor: T.border, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 20 },
     previewLabel: { fontSize: 12, color: T.textSub, fontWeight: '600', letterSpacing: 0.3 },
@@ -965,5 +1000,14 @@ function makeStyles(T: ReturnType<typeof useTheme>) {
     cancelText: { fontSize: 15, fontWeight: '600', color: T.textSub },
     saveBtn: { flex: 2, paddingVertical: 15, borderRadius: 14, alignItems: 'center' },
     saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+    // Scanner
+    scannerWrap: { flex: 1, backgroundColor: T.bg },
+    scannerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40, backgroundColor: T.surfaceHigh, borderBottomWidth: 1, borderColor: T.border },
+    scannerTitle: { fontSize: 20, fontWeight: '700', color: T.text, letterSpacing: -0.4 },
+    scannerBody: { flex: 1, backgroundColor: '#000' },
+    scannerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
+    scannerTarget: { width: 250, height: 250, borderWidth: 2, borderColor: T.accent, borderRadius: 24, backgroundColor: 'transparent' },
+    scannerHint: { fontSize: 14, color: '#fff', fontWeight: '600', marginTop: 30, letterSpacing: 0.5, textAlign: 'center', paddingHorizontal: 40 },
   });
 }

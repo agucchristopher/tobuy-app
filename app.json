@@ -43,19 +43,9 @@
       ],
       "expo-secure-store",
       [
-        "expo-widgets",
+        "expo-camera",
         {
-          "widgets": [
-            {
-              "name": "TopExpensiveWidget",
-              "supportedFamilies": [
-                "systemMedium",
-                "systemLarge"
-              ],
-              "displayName": "Top 5 Expensive Items",
-              "description": "Shows the top 5 most expensive non-bought items."
-            }
-          ]
+          "cameraPermission": "Allow ToBuy to access your camera to scan QR codes."
         }
       ]
     ],
